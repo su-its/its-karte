@@ -234,7 +234,7 @@ export default function ImportPage() {
   }
 
   return (
-    <main className="flex-1 p-8 max-w-4xl mx-auto">
+    <main className="flex-1 px-8 py-8 max-w-screen-2xl mx-auto w-full">
       <h1 className="text-2xl font-bold mb-6">CSVインポート</h1>
 
       {error && (
