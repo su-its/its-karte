@@ -19,14 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { KarteTable, type KarteTableRow } from "@/components/karte-table";
 import { CheckCircle2Icon, AlertCircleIcon, UploadIcon, LoaderIcon } from "lucide-react";
 
 type MemberInfo = { id: string; name: string; studentId: string };
@@ -58,6 +51,43 @@ const TAG_MAPPING: Record<string, ConsultationCategoryId> = {
 
 function parseGradeType(grade: string): "student" | "staff" {
   return grade === "職員" ? "staff" : "student";
+}
+
+function csvRowToTableRow(row: CsvRow, index: number): KarteTableRow {
+  const categories = parseCategoryTags(row.categoryTags);
+  return {
+    id: String(index),
+    recordedAt: new Date(row.timestamp.replace(/\//g, "-")).toISOString(),
+    consultedAt: row.date
+      ? { type: "recorded", value: new Date(row.date.replace(/\//g, "-")).toISOString() }
+      : { type: "notRecorded" },
+    client: row.name ? { type: "recorded", value: { name: row.name } } : { type: "notRecorded" },
+    consultation: {
+      targetDevice: row.targetDevice
+        ? { type: "recorded", value: row.targetDevice }
+        : { type: "notRecorded" },
+      categories:
+        categories.length > 0 ? { type: "recorded", value: categories } : { type: "notRecorded" },
+      troubleDetails: row.troubleDetails,
+    },
+    assignedMemberNames: row.assignee
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    supportRecord: {
+      resolution: row.resolution
+        ? {
+            type: "recorded",
+            value: {
+              type: row.resolution === "解決" ? ("resolved" as const) : ("unresolved" as const),
+            },
+          }
+        : { type: "notRecorded" },
+      workDuration: row.workDuration
+        ? { type: "recorded", value: Number(row.workDuration) }
+        : { type: "notRecorded" },
+    },
+  };
 }
 
 function parseCategoryTags(tags: string) {
@@ -219,27 +249,8 @@ export default function ImportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="max-h-64 overflow-auto rounded border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>日時</TableHead>
-                    <TableHead>氏名</TableHead>
-                    <TableHead>トラブル</TableHead>
-                    <TableHead>担当</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="whitespace-nowrap">{row.timestamp}</TableCell>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell className="max-w-xs truncate">{row.troubleDetails}</TableCell>
-                      <TableCell>{row.assignee}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="max-h-80 overflow-auto rounded border">
+              <KarteTable kartes={rows.map(csvRowToTableRow)} />
             </div>
             <Button onClick={handlePreviewConfirm}>
               <UploadIcon data-icon="inline-start" />
