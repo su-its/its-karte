@@ -1,10 +1,33 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { parseCsv, type CsvRow } from "@/lib/parseCsv";
 import { listMembers } from "@/actions/karte";
 import { importKartes, type ImportResult } from "@/actions/import";
 import type { ConsultationCategoryId } from "@shizuoka-its/core";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CheckCircle2Icon, AlertCircleIcon, UploadIcon, LoaderIcon } from "lucide-react";
 
 type MemberInfo = { id: string; name: string; studentId: string };
 type Step = "upload" | "preview" | "memberMapping" | "importing" | "done";
@@ -61,11 +84,11 @@ export default function ImportPage() {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const text = await file.text();
       const parsed = parseCsv(text);
       setRows(parsed);
+      setError(null);
       setStep("preview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "CSVの読み込みに失敗しました");
@@ -162,118 +185,144 @@ export default function ImportPage() {
   }
 
   return (
-    <main className="flex-1 p-8 max-w-4xl">
+    <main className="flex-1 p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">CSVインポート</h1>
 
       {error && (
-        <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-red-700">{error}</div>
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircleIcon />
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {step === "upload" && (
-        <div>
-          <p className="mb-4 text-zinc-600">
-            Google FormsからエクスポートしたカルテのCSVファイルを選択してください。
-          </p>
-          <input
-            type="file"
-            accept=".csv"
-            onChange={handleFileUpload}
-            className="block w-full text-sm file:mr-4 file:rounded file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-blue-700 hover:file:bg-blue-100"
-          />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>CSVファイルを選択</CardTitle>
+            <CardDescription>
+              Google FormsからエクスポートしたカルテのCSVファイルをアップロードしてください。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Input type="file" accept=".csv" onChange={handleFileUpload} />
+          </CardContent>
+        </Card>
       )}
 
       {step === "preview" && (
-        <div>
-          <p className="mb-4">{rows.length}件のカルテデータを検出しました。</p>
-          <div className="mb-4 max-h-64 overflow-auto rounded border">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-zinc-100">
-                <tr>
-                  <th className="p-2 text-left">日時</th>
-                  <th className="p-2 text-left">氏名</th>
-                  <th className="p-2 text-left">トラブル</th>
-                  <th className="p-2 text-left">担当</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => (
-                  <tr key={i} className="border-t">
-                    <td className="p-2">{row.timestamp}</td>
-                    <td className="p-2">{row.name}</td>
-                    <td className="p-2 max-w-xs truncate">{row.troubleDetails}</td>
-                    <td className="p-2">{row.assignee}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <button
-            onClick={handlePreviewConfirm}
-            className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
-            インポート開始
-          </button>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>プレビュー</CardTitle>
+            <CardDescription>
+              <Badge variant="secondary">{rows.length}件</Badge> のカルテデータを検出しました。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="max-h-64 overflow-auto rounded border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>日時</TableHead>
+                    <TableHead>氏名</TableHead>
+                    <TableHead>トラブル</TableHead>
+                    <TableHead>担当</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="whitespace-nowrap">{row.timestamp}</TableCell>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell className="max-w-xs truncate">{row.troubleDetails}</TableCell>
+                      <TableCell>{row.assignee}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <Button onClick={handlePreviewConfirm}>
+              <UploadIcon data-icon="inline-start" />
+              インポート開始
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {step === "memberMapping" && (
-        <div>
-          <p className="mb-4">
-            以下の担当者が自動マッチできませんでした。対応するメンバーを選択してください。
-          </p>
-          {unmatchedAssignees.map((assigneeId) => (
-            <div key={assigneeId} className="mb-3">
-              <label className="block text-sm font-medium mb-1">担当者: {assigneeId}</label>
-              <select
-                className="w-full rounded border p-2"
-                value={memberMapping.get(assigneeId) ?? ""}
-                onChange={(e) => handleMemberSelect(assigneeId, e.target.value)}
-              >
-                <option value="">スキップ</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.studentId})
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          <button
-            onClick={handleMappingConfirm}
-            className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
-            確定してインポート
-          </button>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>担当者のマッチング</CardTitle>
+            <CardDescription>
+              以下の担当者が自動マッチできませんでした。対応するメンバーを選択してください。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {unmatchedAssignees.map((assigneeId) => (
+              <Field key={assigneeId}>
+                <FieldLabel>担当者: {assigneeId}</FieldLabel>
+                <Select
+                  value={memberMapping.get(assigneeId) ?? ""}
+                  onValueChange={(value) => {
+                    if (value) handleMemberSelect(assigneeId, value);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="スキップ" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name} ({m.studentId})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            ))}
+            <Button onClick={handleMappingConfirm}>確定してインポート</Button>
+          </CardContent>
+        </Card>
       )}
 
-      {step === "importing" && <p className="text-zinc-500">インポート中...</p>}
+      {step === "importing" && (
+        <Card>
+          <CardContent className="flex items-center gap-2 py-8 justify-center">
+            <LoaderIcon className="animate-spin" />
+            <span className="text-muted-foreground">インポート中...</span>
+          </CardContent>
+        </Card>
+      )}
 
       {step === "done" && result && (
-        <div>
-          <div className="mb-4 rounded border border-green-300 bg-green-50 p-4">
-            <p className="font-medium">インポート完了</p>
-            <p>
+        <div className="flex flex-col gap-4">
+          <Alert>
+            <CheckCircle2Icon />
+            <AlertTitle>インポート完了</AlertTitle>
+            <AlertDescription>
               成功: {result.succeeded}/{result.total}
-            </p>
-            {result.failed.length > 0 && (
-              <p className="text-red-600">失敗: {result.failed.length}</p>
-            )}
-          </div>
+              {result.failed.length > 0 && ` / 失敗: ${result.failed.length}`}
+            </AlertDescription>
+          </Alert>
+
           {result.failed.length > 0 && (
-            <div className="rounded border p-4">
-              <p className="font-medium mb-2">失敗した行:</p>
-              {result.failed.map((f) => (
-                <p key={f.index} className="text-sm text-red-600">
-                  行 {f.index + 2}: {f.error}
-                </p>
-              ))}
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>失敗した行</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {result.failed.map((f) => (
+                  <p key={f.index} className="text-sm text-destructive">
+                    行 {f.index + 2}: {f.error}
+                  </p>
+                ))}
+              </CardContent>
+            </Card>
           )}
-          <a href="/kartes" className="mt-4 inline-block text-blue-600 hover:underline">
+
+          <Button variant="outline" render={<Link href="/" />}>
             カルテ一覧へ →
-          </a>
+          </Button>
         </div>
       )}
     </main>
