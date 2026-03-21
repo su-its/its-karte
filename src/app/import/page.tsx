@@ -76,10 +76,15 @@ function csvRowToTableRow(row: CsvRow, index: number): KarteTableRow {
           value: {
             type: gradeType === "staff" ? "職員" : "学生",
             name: row.name,
+            studentId: gradeType === "student" ? row.studentId : undefined,
             affiliation: gradeType === "student" ? `学生 / ${formatCsvAffiliation(row)}` : "職員",
           },
         }
       : { type: "notRecorded" },
+    consent: {
+      liabilityConsent: row.liabilityConsent === "同意する",
+      disclosureConsent: row.disclosureConsent === "同意する",
+    },
     consultation: {
       targetDevice: row.targetDevice
         ? { type: "recorded", value: row.targetDevice }
@@ -93,6 +98,7 @@ function csvRowToTableRow(row: CsvRow, index: number): KarteTableRow {
       .map((s) => s.trim())
       .filter(Boolean),
     supportRecord: {
+      content: row.supportContent,
       resolution: row.resolution
         ? {
             type: "recorded",

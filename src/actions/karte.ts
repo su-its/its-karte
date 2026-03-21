@@ -96,20 +96,23 @@ function formatAffiliation(affiliation: Affiliation): string {
   return "";
 }
 
-function serializeClient(
-  client: Recorded<Client>,
-):
-  | { type: "recorded"; value: { type: string; name: string; affiliation?: string } }
+function serializeClient(client: Recorded<Client>):
+  | {
+      type: "recorded";
+      value: { type: string; name: string; studentId?: string; affiliation?: string };
+    }
   | { type: "notRecorded" } {
   if (client.type === "notRecorded") return { type: "notRecorded" };
   const c = client.value;
   const label = CLIENT_TYPE_LABELS[c.type] ?? c.type;
+  const studentId = c.type === "student" ? c.studentId.getValue() : undefined;
   const affiliation = c.type === "student" ? formatAffiliation(c.affiliation) : undefined;
   return {
     type: "recorded",
     value: {
       type: label,
       name: c.name,
+      studentId,
       affiliation: affiliation ? `${label} / ${affiliation}` : label,
     },
   };
@@ -150,6 +153,7 @@ function serializeKarte(karte: Karte) {
       troubleDetails: karte.consultation.troubleDetails,
     },
     supportRecord: {
+      content: karte.supportRecord.content,
       resolution: serializeResolution(karte.supportRecord.resolution),
       workDuration: serializeRecorded(karte.supportRecord.workDuration, (v) => v as number),
     },

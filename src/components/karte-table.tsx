@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CheckIcon, XIcon } from "lucide-react";
 
 type Recorded<T> = { type: "recorded"; value: T } | { type: "notRecorded" };
 
@@ -17,8 +18,13 @@ export type KarteTableRow = {
   client: Recorded<{
     type: string;
     name: string;
+    studentId?: string;
     affiliation?: string;
   }>;
+  consent: {
+    liabilityConsent: boolean;
+    disclosureConsent: boolean;
+  };
   consultation: {
     targetDevice: Recorded<string>;
     categories: Recorded<readonly { id: string; displayName: string }[]>;
@@ -26,6 +32,7 @@ export type KarteTableRow = {
   };
   assignedMemberNames: string[];
   supportRecord: {
+    content: string;
     resolution: Recorded<{ type: "resolved" } | { type: "unresolved"; followUp?: string }>;
     workDuration: Recorded<number>;
   };
@@ -33,6 +40,14 @@ export type KarteTableRow = {
 
 function NotRecorded() {
   return <span className="text-muted-foreground">未記録</span>;
+}
+
+function ConsentIcon({ consented }: { consented: boolean }) {
+  return consented ? (
+    <CheckIcon className="text-green-600 size-4" />
+  ) : (
+    <XIcon className="text-muted-foreground size-4" />
+  );
 }
 
 export function KarteTable({
@@ -46,12 +61,16 @@ export function KarteTable({
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead className="whitespace-nowrap">ID</TableHead>
           <TableHead className="whitespace-nowrap">記録日時</TableHead>
           <TableHead className="whitespace-nowrap">相談日時</TableHead>
           <TableHead>相談者</TableHead>
+          <TableHead className="whitespace-nowrap">免責</TableHead>
+          <TableHead className="whitespace-nowrap">公開</TableHead>
           <TableHead>対象端末</TableHead>
           <TableHead>カテゴリ</TableHead>
           <TableHead className="min-w-48">トラブル詳細</TableHead>
+          <TableHead className="min-w-48">対応内容</TableHead>
           <TableHead>担当者</TableHead>
           <TableHead>ステータス</TableHead>
           <TableHead className="whitespace-nowrap">作業時間</TableHead>
@@ -60,13 +79,16 @@ export function KarteTable({
       <TableBody>
         {kartes.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+            <TableCell colSpan={13} className="h-32 text-center text-muted-foreground">
               {emptyMessage}
             </TableCell>
           </TableRow>
         ) : (
           kartes.map((karte) => (
             <TableRow key={karte.id}>
+              <TableCell className="text-xs text-muted-foreground font-mono">
+                {karte.id.slice(0, 8)}
+              </TableCell>
               <TableCell className="whitespace-nowrap text-sm">
                 {new Date(karte.recordedAt).toLocaleString("ja-JP")}
               </TableCell>
@@ -81,6 +103,11 @@ export function KarteTable({
                 {karte.client.type === "recorded" ? (
                   <div>
                     <div>{karte.client.value.name}</div>
+                    {karte.client.value.studentId && (
+                      <div className="text-xs text-muted-foreground font-mono">
+                        {karte.client.value.studentId}
+                      </div>
+                    )}
                     {karte.client.value.affiliation && (
                       <div className="text-xs text-muted-foreground">
                         {karte.client.value.affiliation}
@@ -90,6 +117,12 @@ export function KarteTable({
                 ) : (
                   <NotRecorded />
                 )}
+              </TableCell>
+              <TableCell className="text-center">
+                <ConsentIcon consented={karte.consent.liabilityConsent} />
+              </TableCell>
+              <TableCell className="text-center">
+                <ConsentIcon consented={karte.consent.disclosureConsent} />
               </TableCell>
               <TableCell className="text-sm">
                 {karte.consultation.targetDevice.type === "recorded" ? (
@@ -111,8 +144,11 @@ export function KarteTable({
                   <NotRecorded />
                 )}
               </TableCell>
-              <TableCell className="text-sm max-w-xs truncate">
-                {karte.consultation.troubleDetails}
+              <TableCell className="text-sm max-w-xs">
+                <div className="line-clamp-3">{karte.consultation.troubleDetails}</div>
+              </TableCell>
+              <TableCell className="text-sm max-w-xs">
+                <div className="line-clamp-3">{karte.supportRecord.content}</div>
               </TableCell>
               <TableCell className="text-sm">
                 {karte.assignedMemberNames.length > 0 ? (
