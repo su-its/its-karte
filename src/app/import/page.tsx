@@ -53,15 +53,33 @@ function parseGradeType(grade: string): "student" | "staff" {
   return grade === "職員" ? "staff" : "student";
 }
 
+function formatCsvAffiliation(row: CsvRow): string {
+  const gradeMatch = row.grade.match(/^(学部|修士|博士)\s*(\d+)年$/);
+  if (!gradeMatch) return row.grade;
+  const [, course, year] = gradeMatch;
+  return `${row.faculty} ${row.department} ${course === "学部" ? "" : course}${year}年`.trim();
+}
+
 function csvRowToTableRow(row: CsvRow, index: number): KarteTableRow {
   const categories = parseCategoryTags(row.categoryTags);
+  const gradeType = parseGradeType(row.grade);
+
   return {
     id: String(index),
     recordedAt: new Date(row.timestamp.replace(/\//g, "-")).toISOString(),
     consultedAt: row.date
       ? { type: "recorded", value: new Date(row.date.replace(/\//g, "-")).toISOString() }
       : { type: "notRecorded" },
-    client: row.name ? { type: "recorded", value: { name: row.name } } : { type: "notRecorded" },
+    client: row.name
+      ? {
+          type: "recorded",
+          value: {
+            type: gradeType === "staff" ? "職員" : "学生",
+            name: row.name,
+            affiliation: gradeType === "student" ? `学生 / ${formatCsvAffiliation(row)}` : "職員",
+          },
+        }
+      : { type: "notRecorded" },
     consultation: {
       targetDevice: row.targetDevice
         ? { type: "recorded", value: row.targetDevice }
@@ -78,9 +96,10 @@ function csvRowToTableRow(row: CsvRow, index: number): KarteTableRow {
       resolution: row.resolution
         ? {
             type: "recorded",
-            value: {
-              type: row.resolution === "解決" ? ("resolved" as const) : ("unresolved" as const),
-            },
+            value:
+              row.resolution === "解決"
+                ? { type: "resolved" as const }
+                : { type: "unresolved" as const, followUp: row.followUp || undefined },
           }
         : { type: "notRecorded" },
       workDuration: row.workDuration
