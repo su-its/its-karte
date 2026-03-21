@@ -7,18 +7,33 @@ import {
   type Karte,
   type Member,
   type Recorded,
+  type MemberId,
 } from "@shizuoka-its/core";
 
 const karteUseCases = createKarteUseCases();
 const memberUseCases = createMemberUseCases();
 
-/** シリアライズ済みカルテ（Server Action → Client Componentに渡せる形式） */
 export type SerializedKarte = ReturnType<typeof serializeKarte>;
 export type SerializedMember = ReturnType<typeof serializeMember>;
 
-export async function listKartes() {
-  const { kartes } = await karteUseCases.listKartes.execute({});
-  return kartes.map(serializeKarte);
+export async function listKartesWithMembers() {
+  const [{ kartes }, { members }] = await Promise.all([
+    karteUseCases.listKartes.execute({}),
+    memberUseCases.getMemberList.execute({}),
+  ]);
+
+  const memberMap = new Map<string, string>();
+  for (const m of members) {
+    memberMap.set(m.id as string, m.getName());
+  }
+
+  return kartes.map((karte) => ({
+    ...serializeKarte(karte),
+    assignedMemberNames: resolveAssignedMemberNames(
+      karte.supportRecord.assignedMemberIds,
+      memberMap,
+    ),
+  }));
 }
 
 export async function getKarte(id: string) {
@@ -31,6 +46,14 @@ export async function getKarte(id: string) {
 export async function listMembers() {
   const { members } = await memberUseCases.getMemberList.execute({});
   return members.map(serializeMember);
+}
+
+function resolveAssignedMemberNames(
+  assignedMemberIds: Recorded<readonly MemberId[]>,
+  memberMap: Map<string, string>,
+): string[] {
+  if (assignedMemberIds.type === "notRecorded") return [];
+  return assignedMemberIds.value.map((id) => memberMap.get(id as string) ?? (id as string));
 }
 
 function serializeRecorded<T>(
