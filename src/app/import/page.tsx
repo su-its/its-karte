@@ -268,9 +268,7 @@ export default function ImportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="max-h-80 overflow-auto rounded border">
-              <KarteTable kartes={rows.map(csvRowToTableRow)} />
-            </div>
+            <KarteTable kartes={rows.map(csvRowToTableRow)} />
             <Button onClick={handlePreviewConfirm}>
               <UploadIcon data-icon="inline-start" />
               インポート開始
