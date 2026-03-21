@@ -8,30 +8,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type Recorded<T> = { type: "recorded"; value: T } | { type: "notRecorded" };
+
 export type KarteTableRow = {
   id: string;
   recordedAt: string;
-  consultedAt: { type: "recorded"; value: unknown } | { type: "notRecorded" };
-  client: { type: "recorded"; value: { name: string } } | { type: "notRecorded" };
+  consultedAt: Recorded<string>;
+  client: Recorded<{
+    type: string;
+    name: string;
+    affiliation?: string;
+  }>;
   consultation: {
-    targetDevice: { type: "recorded"; value: string } | { type: "notRecorded" };
-    categories:
-      | {
-          type: "recorded";
-          value: readonly { id: string; displayName: string }[];
-        }
-      | { type: "notRecorded" };
+    targetDevice: Recorded<string>;
+    categories: Recorded<readonly { id: string; displayName: string }[]>;
     troubleDetails: string;
   };
   assignedMemberNames: string[];
   supportRecord: {
-    resolution:
-      | {
-          type: "recorded";
-          value: { type: "resolved" } | { type: "unresolved" };
-        }
-      | { type: "notRecorded" };
-    workDuration: { type: "recorded"; value: number } | { type: "notRecorded" };
+    resolution: Recorded<{ type: "resolved" } | { type: "unresolved"; followUp?: string }>;
+    workDuration: Recorded<number>;
   };
 };
 
@@ -76,13 +72,24 @@ export function KarteTable({
               </TableCell>
               <TableCell className="whitespace-nowrap text-sm">
                 {karte.consultedAt.type === "recorded" ? (
-                  new Date(karte.consultedAt.value as string).toLocaleString("ja-JP")
+                  new Date(karte.consultedAt.value).toLocaleString("ja-JP")
                 ) : (
                   <NotRecorded />
                 )}
               </TableCell>
               <TableCell className="text-sm">
-                {karte.client.type === "recorded" ? karte.client.value.name : <NotRecorded />}
+                {karte.client.type === "recorded" ? (
+                  <div>
+                    <div>{karte.client.value.name}</div>
+                    {karte.client.value.affiliation && (
+                      <div className="text-xs text-muted-foreground">
+                        {karte.client.value.affiliation}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <NotRecorded />
+                )}
               </TableCell>
               <TableCell className="text-sm">
                 {karte.consultation.targetDevice.type === "recorded" ? (
@@ -96,7 +103,7 @@ export function KarteTable({
                   <div className="flex flex-wrap gap-1">
                     {karte.consultation.categories.value.map((cat) => (
                       <Badge key={cat.id} variant="outline" className="text-xs">
-                        {cat.id}
+                        {cat.displayName}
                       </Badge>
                     ))}
                   </div>
@@ -119,7 +126,14 @@ export function KarteTable({
                   karte.supportRecord.resolution.value.type === "resolved" ? (
                     <Badge variant="secondary">解決</Badge>
                   ) : (
-                    <Badge variant="destructive">未解決</Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge variant="destructive">未解決</Badge>
+                      {karte.supportRecord.resolution.value.followUp && (
+                        <span className="text-xs text-muted-foreground">
+                          → {karte.supportRecord.resolution.value.followUp}
+                        </span>
+                      )}
+                    </div>
                   )
                 ) : (
                   <Badge variant="outline">未記録</Badge>
