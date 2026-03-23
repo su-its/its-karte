@@ -245,46 +245,43 @@ export function KarteForm({
     const isModified = isEditable && orig !== undefined && orig !== val;
     return (
       <Field>
-        <FieldLabel
-          className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
-        >
-          {label}
-        </FieldLabel>
+        <div className="flex items-center gap-2">
+          <FieldLabel
+            className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
+          >
+            {label}
+          </FieldLabel>
+          {onMarkNotRecorded && editableFields?.has(field) && (
+            <button
+              type="button"
+              className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              onClick={() => {
+                set(field, "" as never);
+                onMarkNotRecorded(field);
+              }}
+            >
+              未記録にする
+            </button>
+          )}
+        </div>
         <OriginalValueHint field={field} />
         {isEditable ? (
-          <div className="flex gap-2">
-            <Input
-              type={opts?.type}
-              min={opts?.min}
-              max={opts?.max}
-              value={val}
-              onChange={(e) => set(field, e.target.value as never)}
-              placeholder={opts?.placeholder}
-              required={opts?.required}
-              className={cn(
-                "flex-1",
-                isModified
-                  ? "border-green-500"
-                  : editableFields?.has(field)
-                    ? "border-destructive"
-                    : undefined,
-              )}
-            />
-            {onMarkNotRecorded && editableFields?.has(field) && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-xs text-muted-foreground"
-                onClick={() => {
-                  set(field, "" as never);
-                  onMarkNotRecorded(field);
-                }}
-              >
-                未記録にする
-              </Button>
-            )}
-          </div>
+          <Input
+            type={opts?.type}
+            min={opts?.min}
+            max={opts?.max}
+            value={val}
+            onChange={(e) => set(field, e.target.value as never)}
+            placeholder={opts?.placeholder}
+            required={opts?.required}
+            className={
+              isModified
+                ? "border-green-500"
+                : editableFields?.has(field)
+                  ? "border-destructive"
+                  : undefined
+            }
+          />
         ) : (
           <div className="text-sm py-2.5 px-1 min-h-[2.25rem]">
             {val || <span className="text-muted-foreground">—</span>}
@@ -301,43 +298,41 @@ export function KarteForm({
     const isModified = isEditable && orig !== undefined && orig !== val;
     return (
       <Field>
-        <FieldLabel
-          className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
-        >
-          {label}
-        </FieldLabel>
+        <div className="flex items-center gap-2">
+          <FieldLabel
+            className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
+          >
+            {label}
+          </FieldLabel>
+          {onMarkNotRecorded && editableFields?.has(field) && (
+            <button
+              type="button"
+              className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              onClick={() => {
+                set(field, "" as never);
+                onMarkNotRecorded(field);
+              }}
+            >
+              未記録にする
+            </button>
+          )}
+        </div>
         <OriginalValueHint field={field} />
         {isEditable ? (
-          <>
-            <Textarea
-              value={val}
-              onChange={(e) => set(field, e.target.value as never)}
-              placeholder={placeholder}
-              rows={4}
-              required
-              className={
-                isModified
-                  ? "border-green-500"
-                  : editableFields?.has(field)
-                    ? "border-destructive"
-                    : undefined
-              }
-            />
-            {onMarkNotRecorded && editableFields?.has(field) && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="self-end text-xs text-muted-foreground mt-1"
-                onClick={() => {
-                  set(field, "" as never);
-                  onMarkNotRecorded(field);
-                }}
-              >
-                未記録にする
-              </Button>
-            )}
-          </>
+          <Textarea
+            value={val}
+            onChange={(e) => set(field, e.target.value as never)}
+            placeholder={placeholder}
+            rows={4}
+            required
+            className={
+              isModified
+                ? "border-green-500"
+                : editableFields?.has(field)
+                  ? "border-destructive"
+                  : undefined
+            }
+          />
         ) : (
           <div className="text-sm py-2.5 px-1 whitespace-pre-wrap">
             {val || <span className="text-muted-foreground">—</span>}
