@@ -235,6 +235,16 @@ export function KarteForm({
   }
 
   useEffect(() => {
+    if (!editableFields || editableFields.size === 0) return;
+    const first = [...editableFields][0];
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-field="${first}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+
+  useEffect(() => {
     function update() {
       if (!values.consultedAt) return;
       const diff = Date.now() - new Date(values.consultedAt).getTime();
@@ -341,7 +351,7 @@ export function KarteForm({
   /** FieldLabel + NotRecordedPill をまとめたヘッダー行 */
   function FieldHeader({ field, label }: { field: keyof KarteFormValues; label: string }) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-field={field}>
         <FieldLabel
           className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
         >

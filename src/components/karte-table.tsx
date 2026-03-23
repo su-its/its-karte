@@ -86,6 +86,8 @@ export type KarteTableRow = {
   error?: string;
   /** エラーが修正済みであることを示す */
   fixed?: boolean;
+  /** 警告（非ブロッキング: 未解決担当者など） */
+  warning?: string;
 };
 
 const COLUMNS = [
@@ -408,6 +410,7 @@ export function KarteTable({
                     onRowClick && "cursor-pointer",
                     karte.error && "bg-destructive/5 hover:bg-destructive/10",
                     karte.fixed && !karte.error && "bg-green-500/5 hover:bg-green-500/10",
+                    !karte.error && karte.warning && "bg-yellow-500/5 hover:bg-yellow-500/10",
                   )}
                   onClick={() => onRowClick?.(karte, originalIndex)}
                 >

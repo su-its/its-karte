@@ -365,6 +365,7 @@ export function csvRowToTableRow(
         : { type: "notRecorded" },
     },
     error: validateRow(row, notRecordedFields),
+    warning: assigneeNames.some((n) => n.startsWith("⚠")) ? "未解決の担当者があります" : undefined,
   };
 }
 

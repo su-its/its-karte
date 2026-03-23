@@ -8,6 +8,8 @@ import { importKartes, type ImportResult } from "@/actions/import";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   Sheet,
@@ -470,33 +472,15 @@ export default function ImportPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 {[...unresolvedAssignees.entries()].map(([name, count]) => (
-                  <div
+                  <AssigneeMapper
                     key={name}
-                    className="flex items-center gap-3 rounded-md border bg-background p-3"
-                  >
-                    <Badge variant="outline" className="text-muted-foreground shrink-0">
-                      {name}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground shrink-0">({count}件)</span>
-                    <div className="flex-1">
-                      <select
-                        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
-                        defaultValue=""
-                        onChange={(e) => {
-                          if (e.target.value) resolveAssignee(name, e.target.value);
-                        }}
-                      >
-                        <option value="">未解決のまま</option>
-                        {members.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}（{m.studentId}）
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                    unresolvedName={name}
+                    count={count}
+                    members={members}
+                    onResolve={(memberId) => resolveAssignee(name, memberId)}
+                  />
                 ))}
               </div>
             </div>
@@ -926,6 +910,89 @@ function DropZone({ onFile }: { onFile: (file: File) => void }) {
           if (f) onFile(f);
         }}
       />
+    </div>
+  );
+}
+
+/** 未解決の担当者名→メンバー紐づけ（検索付き） */
+function AssigneeMapper({
+  unresolvedName,
+  count,
+  members,
+  onResolve,
+}: {
+  unresolvedName: string;
+  count: number;
+  members: MemberInfo[];
+  onResolve: (memberId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [resolved, setResolved] = useState<MemberInfo | null>(null);
+  const lowerQuery = query.toLowerCase();
+  const filtered = lowerQuery
+    ? members.filter(
+        (m) =>
+          m.name.toLowerCase().includes(lowerQuery) ||
+          (m.studentId ?? "").toLowerCase().includes(lowerQuery),
+      )
+    : members;
+
+  if (resolved) {
+    return (
+      <div className="flex items-center gap-3 rounded-md border bg-background p-3">
+        <Badge variant="outline" className="text-muted-foreground shrink-0">
+          {unresolvedName}
+        </Badge>
+        <ArrowRightIcon className="size-4 text-muted-foreground shrink-0" />
+        <Badge variant="default">{resolved.name}</Badge>
+        <span className="text-xs text-muted-foreground">({count}件)</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="flex items-center gap-3 mb-2">
+        <Badge variant="outline" className="text-muted-foreground shrink-0">
+          {unresolvedName}
+        </Badge>
+        <span className="text-xs text-muted-foreground shrink-0">({count}件)</span>
+        <ArrowRightIcon className="size-4 text-muted-foreground shrink-0" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="名前・学籍番号で検索..."
+          className="h-8 text-sm"
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+        {filtered.map((m) => (
+          <HoverCard key={m.id}>
+            <HoverCardTrigger>
+              <Badge
+                variant="outline"
+                className="cursor-pointer select-none hover:bg-muted transition-colors"
+                onClick={() => {
+                  setResolved(m);
+                  onResolve(m.id);
+                }}
+              >
+                {m.name}
+              </Badge>
+            </HoverCardTrigger>
+            <HoverCardContent className="text-sm">
+              <div className="flex flex-col gap-1">
+                <div className="font-semibold">{m.name}</div>
+                {m.studentId && <div className="text-muted-foreground">{m.studentId}</div>}
+                {m.department && <div className="text-muted-foreground">{m.department}</div>}
+              </div>
+            </HoverCardContent>
+          </HoverCard>
+        ))}
+        {filtered.length === 0 && (
+          <span className="text-sm text-muted-foreground py-1">該当なし</span>
+        )}
+      </div>
     </div>
   );
 }

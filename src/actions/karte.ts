@@ -93,9 +93,9 @@ function serializeConsultedAt(ca: ConsultedAt): {
     case "yearMonth":
       return { precision: "yearMonth", value: `${ca.year}-${String(ca.month).padStart(2, "0")}` };
     case "date":
-      return { precision: "date", value: ca.value.toISOString().slice(0, 10) };
+      return { precision: "date", value: new Date(ca.value).toISOString().slice(0, 10) };
     case "datetime":
-      return { precision: "datetime", value: ca.value.toISOString() };
+      return { precision: "datetime", value: new Date(ca.value).toISOString() };
   }
 }
 
