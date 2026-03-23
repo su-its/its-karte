@@ -52,6 +52,7 @@ import {
   csvRowToTableRow,
   csvRowToFormValues,
   csvErrorFieldsToEditableFields,
+  formFieldToCsvField,
   formValuesToCsvRow,
   buildComparisonFields,
   exportErrorCsv,
@@ -74,6 +75,10 @@ export default function ImportPage() {
   const [comparingIndex, setComparingIndex] = useState<number | null>(null);
   const [expandedDuplicates, setExpandedDuplicates] = useState<Set<number>>(new Set());
   const [initialErrorIndices, setInitialErrorIndices] = useState<Set<number>>(new Set());
+  /** 行index → ユーザーが「未記録として登録」を選んだフィールド */
+  const [notRecordedFieldsMap, setNotRecordedFieldsMap] = useState<Map<number, Set<keyof CsvRow>>>(
+    new Map(),
+  );
 
   const karteFingerprints = useMemo(
     () => existingKartes.map(fingerprintsFromKarte),
@@ -83,11 +88,12 @@ export default function ImportPage() {
   const tableRows = useMemo(
     () =>
       rows.map((row, i) => {
-        const tr = csvRowToTableRow(row, i, memberMapping, members);
+        const nrFields = notRecordedFieldsMap.get(i);
+        const tr = csvRowToTableRow(row, i, memberMapping, members, nrFields);
         if (initialErrorIndices.has(i) && !tr.error) tr.fixed = true;
         return tr;
       }),
-    [rows, memberMapping, members, initialErrorIndices],
+    [rows, memberMapping, members, initialErrorIndices, notRecordedFieldsMap],
   );
 
   const errorIndices = useMemo(
@@ -172,7 +178,7 @@ export default function ImportPage() {
       // Capture initial errors before user edits
       const initErrors = new Set<number>();
       for (let i = 0; i < parsed.length; i++) {
-        if (validateRow(parsed[i])) initErrors.add(i);
+        if (validateRow(parsed[i], undefined)) initErrors.add(i);
       }
       setInitialErrorIndices(initErrors);
       setStep("validation");
@@ -190,10 +196,23 @@ export default function ImportPage() {
   >(undefined);
 
   function openRowEditor(index: number) {
-    const errorFields = getErrorFields(rows[index]);
+    const nrFields = notRecordedFieldsMap.get(index);
+    const errorFields = getErrorFields(rows[index], nrFields);
     setEditingRowIndex(index);
     setFrozenEditableFields(errorFields);
     setOriginalFormValues(csvRowToFormValues(rows[index], memberMapping));
+  }
+
+  function markFieldNotRecorded(rowIndex: number, field: keyof CsvRow) {
+    setNotRecordedFieldsMap((prev) => {
+      const next = new Map(prev);
+      const fields = new Set(next.get(rowIndex) ?? []);
+      fields.add(field);
+      next.set(rowIndex, fields);
+      return next;
+    });
+    // フィールドを空にする
+    setRows((prev) => prev.map((row, i) => (i === rowIndex ? { ...row, [field]: "" } : row)));
   }
 
   function closeRowEditor() {
@@ -716,6 +735,11 @@ export default function ImportPage() {
                 initialValues={csvRowToFormValues(editingRow, memberMapping)}
                 editableFields={formEditableFields}
                 originalValues={originalFormValues}
+                onMarkNotRecorded={(formField) => {
+                  if (editingRowIndex === null) return;
+                  const csvField = formFieldToCsvField(formField);
+                  if (csvField) markFieldNotRecorded(editingRowIndex, csvField);
+                }}
                 onFormChange={(formVals) => {
                   const updated = formValuesToCsvRow(formVals, editingRow, members);
                   setRows((prev) => prev.map((r, i) => (i === editingRowIndex ? updated : r)));

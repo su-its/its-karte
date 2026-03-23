@@ -163,17 +163,44 @@ export function findBatchDuplicates(rows: CsvRow[]): Set<number> {
 // Validation
 // ============================================================================
 
-export function validateRow(row: CsvRow): string | undefined {
+/**
+ * notRecordedとして許容できるフィールド一覧
+ * （ドメインモデルでRecorded<T>型のフィールドに対応）
+ */
+export const RECORDABLE_FIELDS: Set<keyof CsvRow> = new Set([
+  "timestamp",
+  "date",
+  "name",
+  "studentId",
+  "faculty",
+  "department",
+  "grade",
+  "targetDevice",
+  "categoryTags",
+  "troubleDetails",
+  "supportContent",
+  "resolution",
+  "followUp",
+  "workDuration",
+  "assignee",
+]);
+
+export function validateRow(
+  row: CsvRow,
+  notRecordedFields?: Set<keyof CsvRow>,
+): string | undefined {
+  const skip = notRecordedFields ?? new Set<keyof CsvRow>();
   const errors: string[] = [];
 
-  if (!row.timestamp) errors.push("タイムスタンプが空");
-  // 新形式では名前がない場合がある（学籍番号で代用）ため、名前と学籍番号の少なくとも一つが必須
-  if (!row.name && !row.studentId) errors.push("氏名または学籍番号が空");
-  if (!row.troubleDetails) errors.push("トラブル詳細が空");
-  if (!row.supportContent) errors.push("対応内容が空");
+  if (!row.timestamp && !skip.has("timestamp")) errors.push("タイムスタンプが空");
+  if (!row.name && !row.studentId && !skip.has("name") && !skip.has("studentId")) {
+    errors.push("氏名または学籍番号が空");
+  }
+  if (!row.troubleDetails && !skip.has("troubleDetails")) errors.push("トラブル詳細が空");
+  if (!row.supportContent && !skip.has("supportContent")) errors.push("対応内容が空");
 
   const gradeType = parseGradeType(row.grade);
-  if (gradeType === "student") {
+  if (gradeType === "student" && !skip.has("studentId")) {
     if (!row.studentId) errors.push("学籍番号が空");
     else if (!/^[0-9]{8}$|^[0-9]{3}[A-Z][0-9]{4}$/.test(row.studentId)) {
       errors.push(`学籍番号が不正: ${row.studentId}`);
@@ -188,20 +215,23 @@ export function validateRow(row: CsvRow): string | undefined {
 }
 
 /** エラーのあるCsvRowフィールド名のセットを返す */
-export function getErrorFields(row: CsvRow): Set<keyof CsvRow> {
+export function getErrorFields(
+  row: CsvRow,
+  notRecordedFields?: Set<keyof CsvRow>,
+): Set<keyof CsvRow> {
+  const skip = notRecordedFields ?? new Set<keyof CsvRow>();
   const fields = new Set<keyof CsvRow>();
 
-  if (!row.timestamp) fields.add("timestamp");
-  // 新形式では名前がない場合がある（学籍番号で代用）ため、両方空の場合のみエラー
-  if (!row.name && !row.studentId) {
+  if (!row.timestamp && !skip.has("timestamp")) fields.add("timestamp");
+  if (!row.name && !row.studentId && !skip.has("name") && !skip.has("studentId")) {
     fields.add("name");
     fields.add("studentId");
   }
-  if (!row.troubleDetails) fields.add("troubleDetails");
-  if (!row.supportContent) fields.add("supportContent");
+  if (!row.troubleDetails && !skip.has("troubleDetails")) fields.add("troubleDetails");
+  if (!row.supportContent && !skip.has("supportContent")) fields.add("supportContent");
 
   const gradeType = parseGradeType(row.grade);
-  if (gradeType === "student") {
+  if (gradeType === "student" && !skip.has("studentId")) {
     if (!row.studentId || !/^[0-9]{8}$|^[0-9]{3}[A-Z][0-9]{4}$/.test(row.studentId)) {
       fields.add("studentId");
     }
@@ -223,6 +253,7 @@ export function csvRowToTableRow(
   index: number,
   memberMapping: Map<string, string>,
   members: MemberInfo[],
+  notRecordedFields?: Set<keyof CsvRow>,
 ): KarteTableRow {
   const categories = parseCategoryTags(row.categoryTags);
   const gradeType = parseGradeType(row.grade);
@@ -296,7 +327,7 @@ export function csvRowToTableRow(
         ? { type: "recorded", value: Number(row.workDuration) }
         : { type: "notRecorded" },
     },
-    error: validateRow(row),
+    error: validateRow(row, notRecordedFields),
   };
 }
 
@@ -408,6 +439,26 @@ const CSV_TO_FORM_FIELD: Partial<Record<keyof CsvRow, (keyof KarteFormValues)[]>
   workDuration: ["workDurationMinutes"],
   targetDevice: ["targetDevice"],
 };
+
+/** KarteFormValuesフィールド → CsvRowフィールドの逆マッピング */
+const FORM_TO_CSV_FIELD: Partial<Record<keyof KarteFormValues, keyof CsvRow>> = {
+  consultedAt: "timestamp",
+  clientName: "name",
+  studentId: "studentId",
+  faculty: "faculty",
+  department: "department",
+  courseType: "grade",
+  year: "grade",
+  troubleDetails: "troubleDetails",
+  supportContent: "supportContent",
+  assignedMemberIds: "assignee",
+  workDurationMinutes: "workDuration",
+  targetDevice: "targetDevice",
+};
+
+export function formFieldToCsvField(formField: keyof KarteFormValues): keyof CsvRow | undefined {
+  return FORM_TO_CSV_FIELD[formField];
+}
 
 export function csvErrorFieldsToEditableFields(
   csvFields: Set<keyof CsvRow>,
