@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { SiteHeader } from "@/components/site-header";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -16,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ITS Karte",
-  description: "PC相談室カルテ管理システム",
+  title: "ITS 電子カルテ管理システム",
+  description: "静岡大学ITソルーション室 PC相談室の電子カルテ管理システム",
 };
 
 export default function RootLayout({
@@ -27,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="ja"
       className={cn(
         "h-full",
         "antialiased",
@@ -37,7 +38,10 @@ export default function RootLayout({
         inter.variable,
       )}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SiteHeader />
+        {children}
+      </body>
     </html>
   );
 }
