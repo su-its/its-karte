@@ -7,15 +7,13 @@ import {
   notRecorded,
   workDuration,
   StudentId,
-  UndergraduateAffiliation,
-  MasterAffiliation,
-  PartialUndergraduateAffiliation,
-  PartialMasterAffiliation,
+  type Affiliation,
+  type PartialAffiliation,
   type Assignee,
   type Client,
+  type ConsultedAt,
   type ConsultationCategory,
   type FollowUp,
-  type NonEmptyArray,
   type Recorded,
   type Resolution,
   memberId,
@@ -23,12 +21,6 @@ import {
 import { randomUUID } from "node:crypto";
 
 const karteUseCases = createKarteUseCases();
-
-type ConsultedAt =
-  | { precision: "year"; year: number }
-  | { precision: "yearMonth"; year: number; month: number }
-  | { precision: "date"; value: Date }
-  | { precision: "datetime"; value: Date };
 
 function parseConsultedAtString(input: string): ConsultedAt {
   const trimmed = input.trim().replace(/\//g, "-");
@@ -93,25 +85,23 @@ function toRecordedClient(params: ImportRow["client"]): Recorded<Client> {
     const affiliation =
       course === "修士"
         ? year !== undefined
-          ? new MasterAffiliation({
-              school: "総合科学技術研究科" as never,
-              major: params.department as never,
-              year: year as never,
-            })
-          : new PartialMasterAffiliation({
-              school: "総合科学技術研究科" as never,
-              major: params.department as never,
-            } as never)
+          ? ({
+              type: "master",
+              value: { school: "総合科学技術研究科", major: params.department, year },
+            } as unknown as Affiliation)
+          : ({
+              type: "master",
+              value: { school: "総合科学技術研究科", major: params.department },
+            } as unknown as PartialAffiliation)
         : year !== undefined
-          ? new UndergraduateAffiliation({
-              faculty: params.faculty as never,
-              department: params.department as never,
-              year: year as never,
-            })
-          : new PartialUndergraduateAffiliation({
-              faculty: params.faculty as never,
-              department: params.department as never,
-            } as never);
+          ? ({
+              type: "undergraduate",
+              value: { faculty: params.faculty, department: params.department, year },
+            } as unknown as Affiliation)
+          : ({
+              type: "undergraduate",
+              value: { faculty: params.faculty, department: params.department },
+            } as unknown as PartialAffiliation);
 
     return recorded({
       type: "student",
@@ -137,13 +127,13 @@ function toRecordedResolution(
   return recorded({ type: "unresolved", followUp: followUpRecorded });
 }
 
-function toAssignees(row: ImportRow): Recorded<NonEmptyArray<Assignee>> {
+function toAssignees(row: ImportRow): Recorded<[Assignee, ...Assignee[]]> {
   const assignees: Assignee[] = [
     ...row.resolvedMemberIds.map((id): Assignee => ({ type: "resolved", memberId: memberId(id) })),
     ...row.unresolvedAssigneeNames.map((name): Assignee => ({ type: "unresolved", name })),
   ];
   if (assignees.length === 0) return notRecorded();
-  return recorded(assignees as unknown as NonEmptyArray<Assignee>);
+  return recorded(assignees as [Assignee, ...Assignee[]]);
 }
 
 export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
@@ -167,7 +157,7 @@ export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
         consultation: {
           categories:
             categories.length > 0
-              ? recorded(categories as unknown as NonEmptyArray<ConsultationCategory>)
+              ? recorded(categories as [ConsultationCategory, ...ConsultationCategory[]])
               : notRecorded(),
           targetDevice: recorded(row.targetDevice),
           troubleDetails: row.troubleDetails ? recorded(row.troubleDetails) : notRecorded(),

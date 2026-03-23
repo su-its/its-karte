@@ -17,26 +17,11 @@ import {
   type Affiliation,
   type PartialAffiliation,
   type Assignee,
+  type ConsultedAt,
   type ConsultationCategory,
   type FollowUp,
-  type NonEmptyArray,
-  UndergraduateAffiliation,
-  MasterAffiliation,
-  DoctoralAffiliation,
-  ProfessionalAffiliation,
-  PartialUndergraduateAffiliation,
-  PartialMasterAffiliation,
-  PartialDoctoralAffiliation,
-  PartialProfessionalAffiliation,
 } from "@shizuoka-its/core";
 import { randomUUID } from "node:crypto";
-
-// TODO: import from @shizuoka-its/core after rebuild
-type ConsultedAt =
-  | { precision: "year"; year: number }
-  | { precision: "yearMonth"; year: number; month: number }
-  | { precision: "date"; value: Date }
-  | { precision: "datetime"; value: Date };
 
 const karteUseCases = createKarteUseCases();
 const memberUseCases = createMemberUseCases();
@@ -52,7 +37,7 @@ export async function listKartesWithMembers() {
 
   const memberMap = new Map<string, string>();
   for (const m of members) {
-    memberMap.set(m.id as string, m.getName());
+    memberMap.set(m.id as string, m.name);
   }
 
   return kartes.map((karte) => ({
@@ -122,37 +107,18 @@ const CLIENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function formatAffiliation(affiliation: Affiliation | PartialAffiliation): string {
-  const v = affiliation.getValue() as Record<string, string | number | undefined>;
+  const v = affiliation.value as Record<string, string | number | undefined>;
   const faculty = String(v.faculty ?? v.school ?? "");
   const dept = String(v.department ?? v.major ?? v.program ?? "");
   const yearNum = v.year !== undefined ? Number(v.year) : null;
 
-  if (
-    affiliation instanceof UndergraduateAffiliation ||
-    affiliation instanceof PartialUndergraduateAffiliation
-  ) {
-    return [faculty, dept, yearNum !== null ? `${String(yearNum)}年` : ""]
-      .filter(Boolean)
-      .join(" ");
+  const yearSuffix =
+    affiliation.type === "master" ? "M" : affiliation.type === "doctoral" ? "D" : "";
+
+  if (yearNum !== null) {
+    return [faculty, dept, `${yearSuffix}${String(yearNum)}年`].filter(Boolean).join(" ");
   }
-  if (affiliation instanceof MasterAffiliation || affiliation instanceof PartialMasterAffiliation) {
-    return [faculty, dept, yearNum !== null ? `M${String(yearNum)}` : ""].filter(Boolean).join(" ");
-  }
-  if (
-    affiliation instanceof DoctoralAffiliation ||
-    affiliation instanceof PartialDoctoralAffiliation
-  ) {
-    return [faculty, dept, yearNum !== null ? `D${String(yearNum)}` : ""].filter(Boolean).join(" ");
-  }
-  if (
-    affiliation instanceof ProfessionalAffiliation ||
-    affiliation instanceof PartialProfessionalAffiliation
-  ) {
-    return [faculty, dept, yearNum !== null ? `${String(yearNum)}年` : ""]
-      .filter(Boolean)
-      .join(" ");
-  }
-  return "";
+  return [faculty, dept].filter(Boolean).join(" ");
 }
 
 type SerializedAffiliationData = {
@@ -165,45 +131,39 @@ type SerializedAffiliationData = {
 function serializeAffiliationData(
   affiliation: Affiliation | PartialAffiliation,
 ): SerializedAffiliationData {
-  const value = affiliation.getValue() as Record<string, unknown>;
+  const value = affiliation.value as Record<string, unknown>;
   const year = ("year" in value ? value.year : null) as number | null;
 
-  if (
-    affiliation instanceof UndergraduateAffiliation ||
-    affiliation instanceof PartialUndergraduateAffiliation
-  ) {
-    return {
-      courseType: "undergraduate",
-      faculty: (value.faculty ?? "") as string,
-      department: (value.department ?? value.program ?? "") as string,
-      year,
-    };
+  switch (affiliation.type) {
+    case "undergraduate":
+      return {
+        courseType: "undergraduate",
+        faculty: (value.faculty ?? "") as string,
+        department: (value.department ?? "") as string,
+        year,
+      };
+    case "master":
+      return {
+        courseType: "master",
+        faculty: (value.school ?? "") as string,
+        department: (value.major ?? "") as string,
+        year,
+      };
+    case "doctoral":
+      return {
+        courseType: "doctoral",
+        faculty: (value.school ?? "") as string,
+        department: (value.major ?? "") as string,
+        year,
+      };
+    case "professional":
+      return {
+        courseType: "professional",
+        faculty: (value.school ?? "") as string,
+        department: (value.major ?? "") as string,
+        year,
+      };
   }
-  if (affiliation instanceof MasterAffiliation || affiliation instanceof PartialMasterAffiliation) {
-    return {
-      courseType: "master",
-      faculty: (value.school ?? "") as string,
-      department: (value.major ?? "") as string,
-      year,
-    };
-  }
-  if (
-    affiliation instanceof DoctoralAffiliation ||
-    affiliation instanceof PartialDoctoralAffiliation
-  ) {
-    return {
-      courseType: "doctoral",
-      faculty: (value.school ?? "") as string,
-      department: (value.major ?? "") as string,
-      year,
-    };
-  }
-  return {
-    courseType: "professional",
-    faculty: (value.school ?? "") as string,
-    department: (value.major ?? "") as string,
-    year,
-  };
 }
 
 function serializeClient(client: Recorded<Client>):
@@ -283,12 +243,22 @@ function serializeKarte(karte: Karte) {
 }
 
 function serializeMember(member: Member) {
+  if (member.status === "active") {
+    const affValue = member.affiliation?.value as Record<string, unknown> | undefined;
+    return {
+      id: member.id as string,
+      name: member.name,
+      studentId: member.studentId.getValue(),
+      department: (affValue?.department ?? affValue?.major ?? "") as string,
+      email: member.email.getValue(),
+    };
+  }
   return {
     id: member.id as string,
-    name: member.getName(),
-    studentId: member.getStudentId().getValue(),
-    department: member.getDepartment().getValue(),
-    email: member.getEmail().getValue(),
+    name: member.name,
+    studentId: undefined,
+    department: "",
+    email: member.email.getValue(),
   };
 }
 
@@ -334,40 +304,19 @@ function buildConsultedAt(input: KarteFormInput): ConsultedAt {
 }
 
 function buildAffiliation(input: KarteFormInput): Affiliation {
-  switch (input.courseType) {
-    case "undergraduate":
-      return new UndergraduateAffiliation({
-        faculty: input.faculty as never,
-        department: input.department as never,
-        year: input.year as never,
-      });
-    case "master":
-      return new MasterAffiliation({
-        school: input.faculty as never,
-        major: input.department as never,
-        year: input.year as never,
-      });
-    case "doctoral":
-      return new DoctoralAffiliation({
-        school: input.faculty as never,
-        major: input.department as never,
-        year: input.year as never,
-      });
-    case "professional":
-      return new ProfessionalAffiliation({
-        school: input.faculty as never,
-        major: input.department as never,
-        year: input.year as never,
-      });
-  }
+  const value =
+    input.courseType === "undergraduate"
+      ? { faculty: input.faculty, department: input.department, year: input.year }
+      : { school: input.faculty, major: input.department, year: input.year };
+  return { type: input.courseType, value } as unknown as Affiliation;
 }
 
-function buildCategories(ids: string[]): NonEmptyArray<ConsultationCategory> {
+function buildCategories(ids: string[]): [ConsultationCategory, ...ConsultationCategory[]] {
   const cats = ids
     .map((id) => CONSULTATION_CATEGORIES.find((c) => c.id === id))
     .filter((c): c is ConsultationCategory => c !== undefined);
   if (cats.length === 0) throw new Error("カテゴリを1つ以上選択してください");
-  return cats as unknown as NonEmptyArray<ConsultationCategory>;
+  return cats as [ConsultationCategory, ...ConsultationCategory[]];
 }
 
 export async function createKarte(input: KarteFormInput) {
@@ -410,7 +359,7 @@ export async function createKarte(input: KarteFormInput) {
       troubleDetails: input.troubleDetails,
     },
     supportRecord: {
-      assignedMemberIds: memberIds as unknown as NonEmptyArray<MemberId>,
+      assignedMemberIds: memberIds as unknown as [MemberId, ...MemberId[]],
       content: input.supportContent,
       resolution,
       workDuration: workDuration(input.workDurationMinutes),

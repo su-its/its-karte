@@ -8,8 +8,9 @@ import type { listKartesWithMembers } from "@/actions/karte";
 /**
  * 日付文字列から精度を自動判定して SerializedConsultedAt を生成
  */
-function detectConsultedAt(dateStr: string): SerializedConsultedAt {
+function detectConsultedAt(dateStr: string): SerializedConsultedAt | null {
   const trimmed = dateStr.trim().replace(/\//g, "-");
+  if (!trimmed) return null;
 
   // YYYY のみ
   if (/^\d{4}$/.test(trimmed)) {
@@ -24,8 +25,8 @@ function detectConsultedAt(dateStr: string): SerializedConsultedAt {
 
   // YYYY-MM-DD（時刻なし）
   if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed)) {
-    // 正規化: 2005-2-17 → 2005-02-17
     const d = new Date(`${trimmed}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
     const pad = (n: number) => String(n).padStart(2, "0");
     return {
       precision: "date",
@@ -35,7 +36,9 @@ function detectConsultedAt(dateStr: string): SerializedConsultedAt {
 
   // 時刻を含む
   const normalized = trimmed.replace(" ", "T");
-  return { precision: "datetime", value: new Date(normalized).toISOString() };
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return { precision: "datetime", value: parsed.toISOString() };
 }
 
 // ============================================================================
@@ -45,7 +48,7 @@ function detectConsultedAt(dateStr: string): SerializedConsultedAt {
 export type MemberInfo = {
   id: string;
   name: string;
-  studentId: string;
+  studentId?: string;
   department: string;
   email: string;
 };
@@ -302,12 +305,13 @@ export function csvRowToTableRow(
 
   return {
     id: String(index),
-    recordedAt: row.timestamp
+    recordedAt: /\d{4}.\d{2}.\d{2}.\d{2}/.test(row.timestamp)
       ? new Date(row.timestamp.replace(/\//g, "-")).toISOString()
       : new Date().toISOString(),
-    consultedAt: row.date
-      ? { type: "recorded", value: detectConsultedAt(row.date) }
-      : { type: "notRecorded" },
+    consultedAt: (() => {
+      const ca = row.date ? detectConsultedAt(row.date) : null;
+      return ca ? { type: "recorded" as const, value: ca } : { type: "notRecorded" as const };
+    })(),
     client: row.name
       ? {
           type: "recorded",
@@ -575,6 +579,7 @@ export function formValuesToCsvRow(
 
   return {
     ...originalRow,
+    timestamp: formValues.consultedAt || originalRow.timestamp,
     date: formValues.consultedAt || originalRow.date,
     name: formValues.clientName,
     studentId: formValues.studentId,

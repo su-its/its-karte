@@ -306,7 +306,7 @@ export default function ImportPage() {
                   }
                 : null;
       return {
-        recordedAt: row.timestamp
+        recordedAt: /\d{4}.\d{2}.\d{2}.\d{2}/.test(row.timestamp)
           ? new Date(row.timestamp.replace(/\//g, "-")).toISOString()
           : new Date().toISOString(),
         consultedAt: row.date || row.timestamp || null,
