@@ -24,7 +24,10 @@ import { LoaderIcon, SaveIcon } from "lucide-react";
 // Types
 // ============================================================================
 
+export type ConsultedAtPrecision = "datetime" | "date" | "yearMonth" | "year";
+
 export type KarteFormValues = {
+  consultedAtPrecision: ConsultedAtPrecision;
   consultedAt: string;
   clientType: "student" | "teacher" | "staff" | "other";
   clientName: string;
@@ -90,12 +93,92 @@ const COURSE_TYPES = [
 
 const FOLLOW_UPS = ["技術部", "生協", "情報基盤センター", "見送り", "その他"];
 
+const PRECISION_OPTIONS: { value: ConsultedAtPrecision; label: string }[] = [
+  { value: "datetime", label: "日時" },
+  { value: "date", label: "日付のみ" },
+  { value: "yearMonth", label: "年月のみ" },
+  { value: "year", label: "年のみ" },
+];
+
 function toLocalDatetimeString(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** 精度に応じた表示用フォーマット */
+export function formatConsultedAtDisplay(precision: ConsultedAtPrecision, value: string): string {
+  if (!value) return "—";
+  switch (precision) {
+    case "year":
+      return `${value}年`;
+    case "yearMonth": {
+      const [y, m] = value.split("-");
+      return `${y}年${Number(m)}月`;
+    }
+    case "date":
+      return new Date(`${value}T00:00:00`).toLocaleDateString("ja-JP");
+    case "datetime":
+      return new Date(value).toLocaleString("ja-JP");
+  }
+}
+
+/** 精度に応じた入力フィールド */
+function ConsultedAtInput({
+  precision,
+  value,
+  onChange,
+  className,
+}: {
+  precision: ConsultedAtPrecision;
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  switch (precision) {
+    case "datetime":
+      return (
+        <Input
+          type="datetime-local"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={className}
+        />
+      );
+    case "date":
+      return (
+        <Input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={className}
+        />
+      );
+    case "yearMonth":
+      return (
+        <Input
+          type="month"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={className}
+        />
+      );
+    case "year":
+      return (
+        <Input
+          type="number"
+          min={2000}
+          max={2099}
+          placeholder="例: 2025"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={className}
+        />
+      );
+  }
+}
+
 const DEFAULTS: KarteFormValues = {
+  consultedAtPrecision: "datetime",
   consultedAt: "",
   clientType: "student",
   clientName: "",
@@ -228,6 +311,47 @@ export function KarteForm({
     );
   }
 
+  /** 「未記録にする」ピル型ボタン（フィールドがeditable時のみ表示） */
+  function NotRecordedPill({
+    field,
+    clearValue,
+  }: {
+    field: keyof KarteFormValues;
+    clearValue?: () => void;
+  }) {
+    if (!onMarkNotRecorded || !editableFields?.has(field)) return null;
+    return (
+      <button
+        type="button"
+        className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        onClick={() => {
+          if (clearValue) {
+            clearValue();
+          } else {
+            set(field, "" as never);
+          }
+          onMarkNotRecorded(field);
+        }}
+      >
+        未記録にする
+      </button>
+    );
+  }
+
+  /** FieldLabel + NotRecordedPill をまとめたヘッダー行 */
+  function FieldHeader({ field, label }: { field: keyof KarteFormValues; label: string }) {
+    return (
+      <div className="flex items-center gap-2">
+        <FieldLabel
+          className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
+        >
+          {label}
+        </FieldLabel>
+        <NotRecordedPill field={field} />
+      </div>
+    );
+  }
+
   function renderField(
     field: keyof KarteFormValues,
     label: string,
@@ -245,25 +369,7 @@ export function KarteForm({
     const isModified = isEditable && orig !== undefined && orig !== val;
     return (
       <Field>
-        <div className="flex items-center gap-2">
-          <FieldLabel
-            className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
-          >
-            {label}
-          </FieldLabel>
-          {onMarkNotRecorded && editableFields?.has(field) && (
-            <button
-              type="button"
-              className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              onClick={() => {
-                set(field, "" as never);
-                onMarkNotRecorded(field);
-              }}
-            >
-              未記録にする
-            </button>
-          )}
-        </div>
+        <FieldHeader field={field} label={label} />
         <OriginalValueHint field={field} />
         {isEditable ? (
           <Input
@@ -298,25 +404,7 @@ export function KarteForm({
     const isModified = isEditable && orig !== undefined && orig !== val;
     return (
       <Field>
-        <div className="flex items-center gap-2">
-          <FieldLabel
-            className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
-          >
-            {label}
-          </FieldLabel>
-          {onMarkNotRecorded && editableFields?.has(field) && (
-            <button
-              type="button"
-              className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              onClick={() => {
-                set(field, "" as never);
-                onMarkNotRecorded(field);
-              }}
-            >
-              未記録にする
-            </button>
-          )}
-        </div>
+        <FieldHeader field={field} label={label} />
         <OriginalValueHint field={field} />
         {isEditable ? (
           <Textarea
@@ -349,25 +437,44 @@ export function KarteForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-8">
       {/* 相談日時 */}
       <Section title="相談日時">
-        <Field className="max-w-xs">
-          <FieldLabel>相談日時</FieldLabel>
-          {canEdit("consultedAt") ? (
-            <Input
-              type="datetime-local"
-              value={values.consultedAt}
-              onChange={(e) => set("consultedAt", e.target.value)}
-              required
-            />
-          ) : (
-            <div className="text-sm py-2.5 px-1">
-              {values.consultedAt ? new Date(values.consultedAt).toLocaleString("ja-JP") : "—"}
+        <FieldHeader field="consultedAt" label="相談日時" />
+        {canEdit("consultedAt") ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-1.5">
+              {PRECISION_OPTIONS.map((p) => (
+                <Button
+                  key={p.value}
+                  type="button"
+                  size="sm"
+                  variant={values.consultedAtPrecision === p.value ? "default" : "outline"}
+                  onClick={() => {
+                    set("consultedAtPrecision", p.value);
+                    set("consultedAt", "");
+                  }}
+                >
+                  {p.label}
+                </Button>
+              ))}
             </div>
-          )}
-        </Field>
+            <div className="max-w-xs">
+              <ConsultedAtInput
+                precision={values.consultedAtPrecision}
+                value={values.consultedAt}
+                onChange={(v) => set("consultedAt", v)}
+                className={editableFields?.has("consultedAt") ? "border-destructive" : undefined}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm py-2.5 px-1">
+            {formatConsultedAtDisplay(values.consultedAtPrecision, values.consultedAt)}
+          </div>
+        )}
       </Section>
 
       {/* 相談者情報 */}
       <Section title="相談者情報">
+        <FieldHeader field="clientType" label="相談者タイプ" />
         {canEdit("clientType") ? (
           <div className="flex gap-2 mb-4">
             {CLIENT_TYPES.map((ct) => (
@@ -394,7 +501,15 @@ export function KarteForm({
             renderField("studentId", "学籍番号", { placeholder: "例: 12345678", required: true })}
         </div>
 
-        {isStudent && <AffiliationFields values={values} canEdit={canEdit} set={set} />}
+        {isStudent && (
+          <AffiliationFields
+            values={values}
+            canEdit={canEdit}
+            set={set}
+            editableFields={editableFields}
+            onMarkNotRecorded={onMarkNotRecorded}
+          />
+        )}
       </Section>
 
       {/* 同意事項 */}
@@ -408,6 +523,10 @@ export function KarteForm({
                 onCheckedChange={(c) => set("liabilityConsent", !!c)}
               />
               <FieldLabel>免責事項に同意</FieldLabel>
+              <NotRecordedPill
+                field="liabilityConsent"
+                clearValue={() => set("liabilityConsent", false)}
+              />
             </div>
           </Field>
           <Field>
@@ -418,6 +537,10 @@ export function KarteForm({
                 onCheckedChange={(c) => set("disclosureConsent", !!c)}
               />
               <FieldLabel>情報公開に同意</FieldLabel>
+              <NotRecordedPill
+                field="disclosureConsent"
+                clearValue={() => set("disclosureConsent", false)}
+              />
             </div>
           </Field>
         </div>
@@ -425,8 +548,9 @@ export function KarteForm({
 
       {/* 相談内容 */}
       <Section title="相談内容">
+        <FieldHeader field="categoryIds" label="カテゴリ" />
         <SearchableMultiSelect
-          label="カテゴリ"
+          label=""
           items={categories.map((c) => ({
             id: c.id,
             label: c.displayName,
@@ -450,6 +574,7 @@ export function KarteForm({
 
       {/* 対応記録 */}
       <Section title="対応記録">
+        <FieldHeader field="assignedMemberIds" label="担当者" />
         {!canEdit("assignedMemberIds") ? (
           <AssigneeReadOnly
             members={members}
@@ -458,7 +583,7 @@ export function KarteForm({
           />
         ) : (
           <SearchableMultiSelect
-            label="担当者"
+            label=""
             items={members.map((m) => ({
               id: m.id,
               label: m.name,
@@ -475,7 +600,7 @@ export function KarteForm({
 
         <div className="grid grid-cols-3 gap-4 mt-4">
           <Field>
-            <FieldLabel>解決ステータス</FieldLabel>
+            <FieldHeader field="resolutionType" label="解決ステータス" />
             {canEdit("resolutionType") ? (
               <div className="flex gap-2 mt-1">
                 <Button
@@ -506,7 +631,7 @@ export function KarteForm({
 
           {values.resolutionType === "unresolved" && (
             <Field>
-              <FieldLabel>後処理</FieldLabel>
+              <FieldHeader field="followUp" label="後処理" />
               {canEdit("followUp") ? (
                 <Select
                   value={values.followUp}
@@ -636,9 +761,11 @@ function SearchableMultiSelect({
 
   return (
     <div className="mb-4">
-      <div className="mb-2">
-        <FieldLabel>{label}</FieldLabel>
-      </div>
+      {label && (
+        <div className="mb-2">
+          <FieldLabel>{label}</FieldLabel>
+        </div>
+      )}
 
       {selectedItems.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
@@ -707,16 +834,37 @@ function AffiliationFields({
   values,
   canEdit,
   set,
+  editableFields,
+  onMarkNotRecorded,
 }: {
   values: KarteFormValues;
   canEdit: (field: keyof KarteFormValues) => boolean;
   set: <K extends keyof KarteFormValues>(key: K, value: KarteFormValues[K]) => void;
+  editableFields?: Set<keyof KarteFormValues>;
+  onMarkNotRecorded?: (field: keyof KarteFormValues) => void;
 }) {
   const faculties = getFaculties(values.courseType);
   const departments = getDepartments(values.courseType, values.faculty);
   const maxYear = getMaxYear(values.courseType);
 
   const editable = canEdit("courseType");
+
+  const affiliationPill =
+    onMarkNotRecorded && editableFields?.has("faculty") ? (
+      <button
+        type="button"
+        className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        onClick={() => {
+          set("courseType", "" as never);
+          set("faculty", "" as never);
+          set("department", "" as never);
+          set("year", "" as never);
+          onMarkNotRecorded("faculty");
+        }}
+      >
+        未記録にする
+      </button>
+    ) : null;
 
   if (!editable) {
     const courseLabel = COURSE_TYPES.find((ct) => ct.value === values.courseType)?.label ?? "";
@@ -777,6 +925,18 @@ function AffiliationFields({
 
   return (
     <div className="mt-4 flex flex-col gap-3">
+      {affiliationPill && (
+        <div className="flex items-center gap-2">
+          <FieldLabel
+            className={
+              editableFields?.has("faculty") ? "text-destructive font-semibold" : undefined
+            }
+          >
+            所属
+          </FieldLabel>
+          {affiliationPill}
+        </div>
+      )}
       {/* 課程 */}
       <AffiliationStep label="課程">
         {COURSE_TYPES.map((ct) => (

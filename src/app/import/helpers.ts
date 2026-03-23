@@ -1,9 +1,42 @@
 import type { CsvRow } from "@/lib/parseCsv";
-import type { KarteTableRow } from "@/components/karte-table";
-import type { KarteFormValues } from "@/components/karte-form";
+import type { KarteTableRow, SerializedConsultedAt } from "@/components/karte-table";
+import type { ConsultedAtPrecision, KarteFormValues } from "@/components/karte-form";
 import type { ComparisonRow } from "@/components/duplicate-comparison";
 import type { ConsultationCategoryId } from "@shizuoka-its/core";
 import type { listKartesWithMembers } from "@/actions/karte";
+
+/**
+ * 日付文字列から精度を自動判定して SerializedConsultedAt を生成
+ */
+function detectConsultedAt(dateStr: string): SerializedConsultedAt {
+  const trimmed = dateStr.trim().replace(/\//g, "-");
+
+  // YYYY のみ
+  if (/^\d{4}$/.test(trimmed)) {
+    return { precision: "year", value: trimmed };
+  }
+
+  // YYYY-MM
+  if (/^\d{4}-\d{1,2}$/.test(trimmed)) {
+    const [y, m] = trimmed.split("-");
+    return { precision: "yearMonth", value: `${y}-${m.padStart(2, "0")}` };
+  }
+
+  // YYYY-MM-DD（時刻なし）
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed)) {
+    // 正規化: 2005-2-17 → 2005-02-17
+    const d = new Date(`${trimmed}T00:00:00`);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return {
+      precision: "date",
+      value: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    };
+  }
+
+  // 時刻を含む
+  const normalized = trimmed.replace(" ", "T");
+  return { precision: "datetime", value: new Date(normalized).toISOString() };
+}
 
 // ============================================================================
 // Types
@@ -108,7 +141,7 @@ export function fingerprintsFromCsvRow(row: CsvRow): Fingerprints {
 
 export function fingerprintsFromKarte(k: ExistingKarte): Fingerprints {
   const name = k.client.type === "recorded" ? k.client.value.name : "";
-  const date = k.consultedAt.type === "recorded" ? k.consultedAt.value : k.recordedAt;
+  const date = k.consultedAt.type === "recorded" ? k.consultedAt.value.value : k.recordedAt;
   const troubleDetails =
     k.consultation.troubleDetails.type === "recorded" ? k.consultation.troubleDetails.value : "";
   const content = k.supportRecord.content.type === "recorded" ? k.supportRecord.content.value : "";
@@ -273,7 +306,7 @@ export function csvRowToTableRow(
       ? new Date(row.timestamp.replace(/\//g, "-")).toISOString()
       : new Date().toISOString(),
     consultedAt: row.date
-      ? { type: "recorded", value: new Date(row.date.replace(/\//g, "-")).toISOString() }
+      ? { type: "recorded", value: detectConsultedAt(row.date) }
       : { type: "notRecorded" },
     client: row.name
       ? {
@@ -342,10 +375,7 @@ export function buildComparisonFields(
 ): ComparisonRow[] {
   const isMatch = (key: string) => matchedFields.includes(key);
   const dbClient = karte.client.type === "recorded" ? karte.client.value : null;
-  const dbDate =
-    karte.consultedAt.type === "recorded"
-      ? new Date(karte.consultedAt.value).toLocaleString("ja-JP")
-      : "";
+  const dbDate = karte.consultedAt.type === "recorded" ? karte.consultedAt.value.value : "";
   const dbDevice =
     karte.consultation.targetDevice.type === "recorded"
       ? karte.consultation.targetDevice.value
@@ -495,12 +525,12 @@ export function csvRowToFormValues(
 
   const categories = parseCategoryTags(row.categoryTags);
 
+  const dateStr = row.date || row.timestamp;
+  const detectedDate = dateStr ? detectConsultedAt(dateStr) : null;
+
   return {
-    consultedAt: row.date
-      ? new Date(row.date.replace(/\//g, "-")).toISOString().slice(0, 16)
-      : row.timestamp
-        ? new Date(row.timestamp.replace(/\//g, "-")).toISOString().slice(0, 16)
-        : "",
+    consultedAtPrecision: detectedDate?.precision ?? ("datetime" as ConsultedAtPrecision),
+    consultedAt: detectedDate?.value ?? "",
     clientType: gradeType as KarteFormValues["clientType"],
     clientName: row.name,
     studentId: row.studentId,
@@ -545,9 +575,7 @@ export function formValuesToCsvRow(
 
   return {
     ...originalRow,
-    date: formValues.consultedAt
-      ? new Date(formValues.consultedAt).toLocaleDateString("ja-JP")
-      : originalRow.date,
+    date: formValues.consultedAt || originalRow.date,
     name: formValues.clientName,
     studentId: formValues.studentId,
     faculty: formValues.faculty,

@@ -31,6 +31,13 @@ import {
 } from "@shizuoka-its/core";
 import { randomUUID } from "node:crypto";
 
+// TODO: import from @shizuoka-its/core after rebuild
+type ConsultedAt =
+  | { precision: "year"; year: number }
+  | { precision: "yearMonth"; year: number; month: number }
+  | { precision: "date"; value: Date }
+  | { precision: "datetime"; value: Date };
+
 const karteUseCases = createKarteUseCases();
 const memberUseCases = createMemberUseCases();
 
@@ -89,6 +96,22 @@ function serializeRecorded<T, U>(
   return r.type === "recorded"
     ? { type: "recorded", value: transform(r.value) }
     : { type: "notRecorded" };
+}
+
+function serializeConsultedAt(ca: ConsultedAt): {
+  precision: "datetime" | "date" | "yearMonth" | "year";
+  value: string;
+} {
+  switch (ca.precision) {
+    case "year":
+      return { precision: "year", value: String(ca.year) };
+    case "yearMonth":
+      return { precision: "yearMonth", value: `${ca.year}-${String(ca.month).padStart(2, "0")}` };
+    case "date":
+      return { precision: "date", value: ca.value.toISOString().slice(0, 10) };
+    case "datetime":
+      return { precision: "datetime", value: ca.value.toISOString() };
+  }
 }
 
 const CLIENT_TYPE_LABELS: Record<string, string> = {
@@ -241,7 +264,7 @@ function serializeKarte(karte: Karte) {
     id: karte.id as string,
     recordedAt: karte.recordedAt.toISOString(),
     lastUpdatedAt: karte.lastUpdatedAt.toISOString(),
-    consultedAt: serializeRecorded(karte.consultedAt, (d: Date) => d.toISOString()),
+    consultedAt: serializeRecorded(karte.consultedAt, serializeConsultedAt),
     client: serializeClient(karte.client),
     consent: karte.consent,
     consultation: {
@@ -274,6 +297,7 @@ function serializeMember(member: Member) {
 // ============================================================================
 
 export type KarteFormInput = {
+  consultedAtPrecision: "datetime" | "date" | "yearMonth" | "year";
   consultedAt: string;
   clientType: "student" | "teacher" | "staff" | "other";
   clientName: string;
@@ -293,6 +317,21 @@ export type KarteFormInput = {
   followUp: string;
   workDurationMinutes: number;
 };
+
+function buildConsultedAt(input: KarteFormInput): ConsultedAt {
+  switch (input.consultedAtPrecision) {
+    case "year":
+      return { precision: "year", year: Number(input.consultedAt) };
+    case "yearMonth": {
+      const [y, m] = input.consultedAt.split("-").map(Number) as [number, number];
+      return { precision: "yearMonth", year: y, month: m };
+    }
+    case "date":
+      return { precision: "date", value: new Date(`${input.consultedAt}T00:00:00`) };
+    case "datetime":
+      return { precision: "datetime", value: new Date(input.consultedAt) };
+  }
+}
 
 function buildAffiliation(input: KarteFormInput): Affiliation {
   switch (input.courseType) {
@@ -359,7 +398,7 @@ export async function createKarte(input: KarteFormInput) {
 
   await karteUseCases.createKarte.execute({
     id,
-    consultedAt: new Date(input.consultedAt),
+    consultedAt: buildConsultedAt(input),
     client,
     consent: {
       liabilityConsent: input.liabilityConsent,

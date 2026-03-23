@@ -28,14 +28,33 @@ import {
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { CheckIcon, XIcon, ColumnsIcon, SearchIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MemberOption } from "@/components/karte-form";
+import type { ConsultedAtPrecision, MemberOption } from "@/components/karte-form";
+import { formatConsultedAtDisplay } from "@/components/karte-form";
 
 type Recorded<T> = { type: "recorded"; value: T } | { type: "notRecorded" };
+
+export type SerializedConsultedAt = {
+  precision: ConsultedAtPrecision;
+  value: string;
+};
+
+/** SerializedConsultedAtからYYYY-MM-DD形式の文字列を取得（フィルター用） */
+function consultedAtToDateString(ca: SerializedConsultedAt): string {
+  switch (ca.precision) {
+    case "year":
+      return `${ca.value}-01-01`;
+    case "yearMonth":
+      return `${ca.value}-01`;
+    case "date":
+    case "datetime":
+      return ca.value.slice(0, 10);
+  }
+}
 
 export type KarteTableRow = {
   id: string;
   recordedAt: string;
-  consultedAt: Recorded<string>;
+  consultedAt: Recorded<SerializedConsultedAt>;
   client: Recorded<{
     type: string;
     name: string;
@@ -189,7 +208,7 @@ export function KarteTable({
     if (dateFrom || dateTo) {
       const date =
         karte.consultedAt.type === "recorded"
-          ? karte.consultedAt.value.slice(0, 10)
+          ? consultedAtToDateString(karte.consultedAt.value)
           : karte.recordedAt.slice(0, 10);
       if (dateFrom && date < dateFrom) return false;
       if (dateTo && date > dateTo) return false;
@@ -405,7 +424,10 @@ export function KarteTable({
                   {isVisible("consultedAt") && (
                     <TableCell className="whitespace-nowrap text-sm">
                       {karte.consultedAt.type === "recorded" ? (
-                        new Date(karte.consultedAt.value).toLocaleString("ja-JP")
+                        formatConsultedAtDisplay(
+                          karte.consultedAt.value.precision,
+                          karte.consultedAt.value.value,
+                        )
                       ) : (
                         <NotRecorded />
                       )}

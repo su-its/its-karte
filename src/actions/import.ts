@@ -24,9 +24,27 @@ import { randomUUID } from "node:crypto";
 
 const karteUseCases = createKarteUseCases();
 
+type ConsultedAt =
+  | { precision: "year"; year: number }
+  | { precision: "yearMonth"; year: number; month: number }
+  | { precision: "date"; value: Date }
+  | { precision: "datetime"; value: Date };
+
+function parseConsultedAtString(input: string): ConsultedAt {
+  const trimmed = input.trim().replace(/\//g, "-");
+  if (/^\d{4}$/.test(trimmed)) return { precision: "year", year: Number(trimmed) };
+  if (/^\d{4}-\d{1,2}$/.test(trimmed)) {
+    const [y, m] = trimmed.split("-").map(Number) as [number, number];
+    return { precision: "yearMonth", year: y, month: m };
+  }
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed))
+    return { precision: "date", value: new Date(`${trimmed}T00:00:00`) };
+  return { precision: "datetime", value: new Date(trimmed.replace(" ", "T")) };
+}
+
 type ImportRow = {
   recordedAt: string;
-  consultedAt: string;
+  consultedAt: string | null;
   client:
     | {
         type: "student";
@@ -140,7 +158,9 @@ export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
       await karteUseCases.importKarte.execute({
         id: karteId(randomUUID()),
         recordedAt: new Date(row.recordedAt),
-        consultedAt: recorded(new Date(row.consultedAt)),
+        consultedAt: row.consultedAt
+          ? recorded(parseConsultedAtString(row.consultedAt))
+          : notRecorded(),
         lastUpdatedAt: new Date(row.recordedAt),
         client: toRecordedClient(row.client),
         consent: row.consent,

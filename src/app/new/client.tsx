@@ -15,6 +15,7 @@ export function NewKarteClient({ members, categories, createKarte }: Props) {
 
   async function handleSubmit(values: KarteFormValues) {
     const input: KarteFormInput = {
+      consultedAtPrecision: values.consultedAtPrecision,
       consultedAt: values.consultedAt,
       clientType: values.clientType,
       clientName: values.clientName,

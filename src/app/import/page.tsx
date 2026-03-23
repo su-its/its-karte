@@ -306,8 +306,10 @@ export default function ImportPage() {
                   }
                 : null;
       return {
-        recordedAt: new Date(row.timestamp.replace(/\//g, "-")).toISOString(),
-        consultedAt: new Date((row.date || row.timestamp).replace(/\//g, "-")).toISOString(),
+        recordedAt: row.timestamp
+          ? new Date(row.timestamp.replace(/\//g, "-")).toISOString()
+          : new Date().toISOString(),
+        consultedAt: row.date || row.timestamp || null,
         client,
         consent: {
           liabilityConsent:
@@ -582,9 +584,7 @@ export default function ImportPage() {
                       const mf = new Set(match.matchedFields);
                       const clientName = k.client.type === "recorded" ? k.client.value.name : "";
                       const date =
-                        k.consultedAt.type === "recorded"
-                          ? new Date(k.consultedAt.value).toLocaleDateString("ja-JP")
-                          : "";
+                        k.consultedAt.type === "recorded" ? k.consultedAt.value.value : "";
                       const troubleDetails =
                         k.consultation.troubleDetails.type === "recorded"
                           ? k.consultation.troubleDetails.value

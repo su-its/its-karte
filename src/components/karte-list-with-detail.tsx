@@ -29,10 +29,11 @@ function toFormValues(row: KarteTableRow, members: MemberOption[]): Partial<Kart
   const affData = client?.affiliationData;
 
   return {
-    consultedAt:
+    consultedAtPrecision:
       row.consultedAt.type === "recorded"
-        ? new Date(row.consultedAt.value).toISOString().slice(0, 16)
-        : "",
+        ? (row.consultedAt.value.precision as KarteFormValues["consultedAtPrecision"])
+        : "datetime",
+    consultedAt: row.consultedAt.type === "recorded" ? row.consultedAt.value.value : "",
     clientType: (client?.type === "学生"
       ? "student"
       : client?.type === "教員"
