@@ -3,23 +3,12 @@
 import { useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { parseCsv, type CsvRow } from "@/lib/parseCsv";
-import { listMembers, listKartesWithMembers } from "@/actions/karte";
+import { listMembers, listKartesWithMembers, listCategories } from "@/actions/karte";
 import { importKartes, type ImportResult } from "@/actions/import";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -50,6 +39,12 @@ import {
 } from "lucide-react";
 import { Stepper } from "@/components/stepper";
 import {
+  KarteForm,
+  type KarteFormValues,
+  type CategoryOption,
+  type MemberOption,
+} from "@/components/karte-form";
+import {
   type MemberInfo,
   type ExistingKarte,
   parseGradeType,
@@ -57,6 +52,9 @@ import {
   fingerprintsFromKarte,
   findDuplicateMatches,
   csvRowToTableRow,
+  csvRowToFormValues,
+  csvErrorFieldsToEditableFields,
+  formValuesToCsvRow,
   buildComparisonFields,
   exportErrorCsv,
   getErrorFields,
@@ -124,9 +122,14 @@ export default function ImportPage() {
       setRows(parsed);
       setError(null);
 
-      const [memberList, kartes] = await Promise.all([listMembers(), listKartesWithMembers()]);
+      const [memberList, kartes, categories] = await Promise.all([
+        listMembers(),
+        listKartesWithMembers(),
+        listCategories(),
+      ]);
       setMembers(memberList);
       setExistingKartes(kartes);
+      setFormCategories(categories);
 
       const mapping = new Map<string, string>();
       const allAssigneeIds = new Set<string>();
@@ -139,8 +142,15 @@ export default function ImportPage() {
         }
       }
       for (const assigneeId of allAssigneeIds) {
-        const member = memberList.find((m) => m.studentId === assigneeId);
-        if (member) mapping.set(assigneeId, member.id);
+        // 学籍番号で一致
+        const byStudentId = memberList.find((m) => m.studentId === assigneeId);
+        if (byStudentId) {
+          mapping.set(assigneeId, byStudentId.id);
+          continue;
+        }
+        // 名前の部分一致で候補が1人に絞れたらマッチ
+        const nameMatches = memberList.filter((m) => m.name.includes(assigneeId));
+        if (nameMatches.length === 1) mapping.set(assigneeId, nameMatches[0].id);
       }
       setMemberMapping(mapping);
 
@@ -165,26 +175,15 @@ export default function ImportPage() {
     processFile(file);
   }
 
-  function updateRowField(index: number, field: keyof CsvRow, value: string) {
-    setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
-  }
-
   function openRowEditor(index: number) {
     const errorFields = getErrorFields(rows[index], memberMapping);
     setEditingRowIndex(index);
     setFrozenEditableFields(errorFields);
-    // エラーフィールドの元の値をスナップショット
-    const orig: Partial<CsvRow> = {};
-    for (const field of errorFields) {
-      orig[field] = rows[index][field];
-    }
-    setOriginalValues(orig);
   }
 
   function closeRowEditor() {
     setEditingRowIndex(null);
     setFrozenEditableFields(new Set());
-    setOriginalValues({});
   }
 
   function startErrorFlow() {
@@ -235,43 +234,57 @@ export default function ImportPage() {
     const validRows = rows.filter((_, i) => !errorIndices.has(i) && !toSkip.has(i));
     const importRows = validRows.map((row) => {
       const gradeType = parseGradeType(row.grade);
-      const assigneeIds = row.assignee
+      const rawAssignees = row.assignee
         .split(",")
         .map((s: string) => s.trim())
-        .filter(Boolean)
-        .map((id: string) => memberMapping.get(id))
-        .filter((id): id is string => id !== undefined);
+        .filter(Boolean);
+      const resolvedMemberIds: string[] = [];
+      const unresolvedAssigneeNames: string[] = [];
+      for (const name of rawAssignees) {
+        const mid = memberMapping.get(name);
+        if (mid) resolvedMemberIds.push(mid);
+        else unresolvedAssigneeNames.push(name);
+      }
+      const client: Parameters<typeof importKartes>[0][number]["client"] =
+        gradeType === "staff"
+          ? { type: "staff", name: row.name }
+          : gradeType === "teacher"
+            ? { type: "teacher", name: row.name }
+            : gradeType === "other"
+              ? { type: "other", name: row.name }
+              : row.name || row.studentId
+                ? {
+                    type: "student",
+                    studentId: row.studentId,
+                    name: row.name,
+                    faculty: row.faculty,
+                    department: row.department,
+                    grade: row.grade,
+                  }
+                : null;
       return {
         recordedAt: new Date(row.timestamp.replace(/\//g, "-")).toISOString(),
-        consultedAt: new Date(row.date.replace(/\//g, "-")).toISOString(),
-        client:
-          gradeType === "staff"
-            ? { type: "staff" as const, name: row.name }
-            : {
-                type: "student" as const,
-                studentId: row.studentId,
-                name: row.name,
-                faculty: row.faculty,
-                department: row.department,
-                grade: row.grade,
-              },
+        consultedAt: new Date((row.date || row.timestamp).replace(/\//g, "-")).toISOString(),
+        client,
         consent: {
-          liabilityConsent: row.liabilityConsent === "同意する",
-          disclosureConsent: row.disclosureConsent === "同意する",
+          liabilityConsent:
+            row.liabilityConsent === "同意する" || row.liabilityConsent === "同意あり",
+          disclosureConsent:
+            row.disclosureConsent === "同意する" || row.disclosureConsent === "同意あり",
         },
         categories: parseCategoryTags(row.categoryTags),
         targetDevice: row.targetDevice,
         troubleDetails: row.troubleDetails,
-        assignedMemberIds: assigneeIds,
+        resolvedMemberIds,
+        unresolvedAssigneeNames,
         supportContent: row.supportContent,
-        resolution: (row.resolution === "解決" ? "resolved" : "unresolved") as
-          | "resolved"
-          | "unresolved",
+        resolution:
+          row.resolution === "解決" ? "resolved" : row.resolution === "未解決" ? "unresolved" : "",
         followUp: row.followUp || null,
         workDurationMinutes: row.workDuration ? Number(row.workDuration) : null,
       };
     });
-    const importResult = await importKartes(importRows);
+    const importResult = await importKartes(importRows as Parameters<typeof importKartes>[0]);
     setResult(importResult);
     setStep("done");
   }
@@ -279,10 +292,18 @@ export default function ImportPage() {
   const editingRow = editingRowIndex !== null ? rows[editingRowIndex] : null;
   const editingTableRow = editingRowIndex !== null ? tableRows[editingRowIndex] : null;
 
+  const formMembers: MemberOption[] = useMemo(
+    () => members.map((m) => ({ id: m.id, name: m.name, studentId: m.studentId })),
+    [members],
+  );
+  const [formCategories, setFormCategories] = useState<CategoryOption[]>([]);
+
   // シートを開いた時点のエラーフィールドを固定（編集中に消えないように）
   const [frozenEditableFields, setFrozenEditableFields] = useState<Set<keyof CsvRow>>(new Set());
-  // 修正前の値を保持（差分表示用）
-  const [originalValues, setOriginalValues] = useState<Partial<CsvRow>>({});
+  const formEditableFields = useMemo(
+    () => csvErrorFieldsToEditableFields(frozenEditableFields),
+    [frozenEditableFields],
+  );
   const comparingRow = comparingIndex !== null ? rows[comparingIndex] : null;
   const comparingMatches = comparingIndex !== null ? (duplicateMap.get(comparingIndex) ?? []) : [];
   const importableCount =
@@ -568,7 +589,7 @@ export default function ImportPage() {
 
       {/* Sheet: Validation Edit */}
       <Sheet open={editingRowIndex !== null} onOpenChange={() => closeRowEditor()}>
-        <SheetContent className="w-[700px] sm:w-[800px] overflow-y-auto p-8">
+        <SheetContent className="overflow-y-auto p-8">
           <SheetHeader>
             <SheetTitle>行 {editingRowIndex !== null ? editingRowIndex + 2 : ""} の編集</SheetTitle>
             <SheetDescription>
@@ -581,155 +602,15 @@ export default function ImportPage() {
           </SheetHeader>
           {editingRow && editingRowIndex !== null && (
             <div className="flex flex-col gap-4 mt-6">
-              <div className="grid grid-cols-2 gap-4">
-                <RowField
-                  field="timestamp"
-                  label="タイムスタンプ"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="date"
-                  label="相談日時"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-              </div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-4">
-                <RowField
-                  field="name"
-                  label="氏名"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="studentId"
-                  label="学籍番号"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <RowField
-                  field="faculty"
-                  label="学部"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="department"
-                  label="学科"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="grade"
-                  label="学年"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-              </div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-4">
-                <RowField
-                  field="targetDevice"
-                  label="対象端末"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="categoryTags"
-                  label="カテゴリタグ"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-              </div>
-              <RowField
-                field="troubleDetails"
-                label="トラブル詳細"
-                row={editingRow}
-                errorFields={frozenEditableFields}
-                index={editingRowIndex}
-                onUpdate={updateRowField}
-                originalValues={originalValues}
-                multiline
-              />
-              <Separator />
-              <RowField
-                field="supportContent"
-                label="対応内容"
-                row={editingRow}
-                errorFields={frozenEditableFields}
-                index={editingRowIndex}
-                onUpdate={updateRowField}
-                originalValues={originalValues}
-                multiline
-              />
-              <div className="grid grid-cols-3 gap-4">
-                <RowField
-                  field="resolution"
-                  label="解決"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="followUp"
-                  label="後処理"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-                <RowField
-                  field="workDuration"
-                  label="作業時間（分）"
-                  row={editingRow}
-                  errorFields={frozenEditableFields}
-                  index={editingRowIndex}
-                  onUpdate={updateRowField}
-                  originalValues={originalValues}
-                />
-              </div>
-              <RowField
-                field="assignee"
-                label="担当者（カンマ区切り）"
-                row={editingRow}
-                errorFields={frozenEditableFields}
-                index={editingRowIndex}
-                onUpdate={updateRowField}
-                originalValues={originalValues}
+              <KarteForm
+                members={formMembers}
+                categories={formCategories}
+                initialValues={csvRowToFormValues(editingRow, memberMapping)}
+                editableFields={formEditableFields}
+                onFormChange={(formVals) => {
+                  const updated = formValuesToCsvRow(formVals, editingRow, members);
+                  setRows((prev) => prev.map((r, i) => (i === editingRowIndex ? updated : r)));
+                }}
               />
 
               {/* Action footer */}
@@ -779,7 +660,7 @@ export default function ImportPage() {
 
       {/* Sheet: Duplicate Comparison */}
       <Sheet open={comparingIndex !== null} onOpenChange={() => setComparingIndex(null)}>
-        <SheetContent className="w-[800px] sm:w-[900px] overflow-y-auto">
+        <SheetContent className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle>
               重複の確認 — 行 {comparingIndex !== null ? comparingIndex + 2 : ""}
@@ -833,72 +714,6 @@ export default function ImportPage() {
         </SheetContent>
       </Sheet>
     </main>
-  );
-}
-
-function RowField({
-  field,
-  label,
-  row,
-  errorFields,
-  index,
-  onUpdate,
-  originalValues,
-  multiline,
-}: {
-  field: keyof CsvRow;
-  label: string;
-  row: CsvRow;
-  errorFields: Set<keyof CsvRow>;
-  index: number;
-  onUpdate: (index: number, field: keyof CsvRow, value: string) => void;
-  originalValues: Partial<CsvRow>;
-  multiline?: boolean;
-}) {
-  const value = row[field];
-  const isError = errorFields.has(field);
-  const origValue = originalValues[field];
-  const isModified = isError && origValue !== undefined && origValue !== value;
-
-  if (!isError) {
-    return (
-      <Field>
-        <FieldLabel className="text-muted-foreground">{label}</FieldLabel>
-        <div className="text-sm py-2 px-1">
-          {value || <span className="text-muted-foreground">—</span>}
-        </div>
-      </Field>
-    );
-  }
-
-  return (
-    <Field>
-      <FieldLabel className="text-destructive font-semibold">{label}</FieldLabel>
-      {origValue !== undefined && (
-        <div className="text-xs text-muted-foreground mb-1">
-          修正前:{" "}
-          <span className={cn("font-mono", isModified && "line-through")}>
-            {origValue || "（空）"}
-          </span>
-        </div>
-      )}
-      {multiline ? (
-        <Textarea
-          value={value}
-          rows={3}
-          className={isModified ? "border-green-500" : "border-destructive"}
-          onChange={(e) => onUpdate(index, field, e.target.value)}
-          autoFocus={errorFields.values().next().value === field}
-        />
-      ) : (
-        <Input
-          value={value}
-          className={isModified ? "border-green-500" : "border-destructive"}
-          onChange={(e) => onUpdate(index, field, e.target.value)}
-          autoFocus={errorFields.values().next().value === field}
-        />
-      )}
-    </Field>
   );
 }
 

@@ -17,7 +17,7 @@ type Props = {
 };
 
 /** KarteTableRow → KarteFormValues（読み取り専用表示用） */
-function toFormValues(row: KarteTableRow): Partial<KarteFormValues> {
+function toFormValues(row: KarteTableRow, members: MemberOption[]): Partial<KarteFormValues> {
   const client = row.client.type === "recorded" ? row.client.value : null;
   const resolution = row.supportRecord.resolution;
   const resType = resolution.type === "recorded" ? resolution.value.type : "resolved";
@@ -56,7 +56,11 @@ function toFormValues(row: KarteTableRow): Partial<KarteFormValues> {
     targetDevice:
       row.consultation.targetDevice.type === "recorded" ? row.consultation.targetDevice.value : "",
     troubleDetails: row.consultation.troubleDetails,
-    assignedMemberIds: new Set<string>(),
+    assignedMemberIds: new Set(
+      row.assignedMemberNames
+        .map((name) => members.find((m) => m.name === name)?.id)
+        .filter((id): id is string => id !== undefined),
+    ),
     supportContent: row.supportRecord.content,
     resolutionType: resType as "resolved" | "unresolved",
     followUp,
@@ -76,7 +80,7 @@ export function KarteListWithDetail({ kartes, members, categories }: Props) {
       <KarteTable kartes={kartes} onRowClick={(_, index) => setSelectedIndex(index)} />
 
       <Sheet open={selectedIndex !== null} onOpenChange={() => setSelectedIndex(null)}>
-        <SheetContent className="w-[800px] sm:w-[900px] overflow-y-auto p-8">
+        <SheetContent className="overflow-y-auto p-8">
           <SheetHeader>
             <SheetTitle>
               カルテ詳細
@@ -92,8 +96,11 @@ export function KarteListWithDetail({ kartes, members, categories }: Props) {
               <KarteForm
                 members={members}
                 categories={categories}
-                initialValues={toFormValues(selectedRow)}
+                initialValues={toFormValues(selectedRow, members)}
                 readOnly
+                unresolvedAssigneeNames={selectedRow.assignedMemberNames.filter(
+                  (name) => !members.some((m) => m.name === name),
+                )}
               />
             </div>
           )}

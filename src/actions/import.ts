@@ -9,10 +9,12 @@ import {
   StudentId,
   UndergraduateAffiliation,
   MasterAffiliation,
+  PartialUndergraduateAffiliation,
+  PartialMasterAffiliation,
+  type Assignee,
   type Client,
   type ConsultationCategory,
   type FollowUp,
-  type MemberId,
   type NonEmptyArray,
   type Recorded,
   type Resolution,
@@ -34,17 +36,20 @@ type ImportRow = {
         department: string;
         grade: string;
       }
-    | {
-        type: "staff";
-        name: string;
-      };
+    | { type: "staff"; name: string }
+    | { type: "teacher"; name: string }
+    | { type: "other"; name: string }
+    | null;
   consent: { liabilityConsent: boolean; disclosureConsent: boolean };
   categories: { id: string; displayName: string }[];
   targetDevice: string;
   troubleDetails: string;
-  assignedMemberIds: string[];
+  /** MemberIdとして解決済みのID */
+  resolvedMemberIds: string[];
+  /** 解決できなかった対応者名 */
+  unresolvedAssigneeNames: string[];
   supportContent: string;
-  resolution: "resolved" | "unresolved";
+  resolution: "resolved" | "unresolved" | "";
   followUp: string | null;
   workDurationMinutes: number | null;
 };
@@ -55,46 +60,72 @@ export type ImportResult = {
   failed: { index: number; error: string }[];
 };
 
-function toClient(params: ImportRow["client"]): Client {
-  if (params.type === "staff") {
-    return { type: "staff", name: params.name };
+function toRecordedClient(params: ImportRow["client"]): Recorded<Client> {
+  if (params === null) return notRecorded();
+
+  if (params.type === "staff") return recorded({ type: "staff", name: params.name });
+  if (params.type === "teacher") return recorded({ type: "teacher", name: params.name });
+  if (params.type === "other") return recorded({ type: "other", name: params.name });
+
+  try {
+    const gradeMatch = params.grade.match(/^(学部|修士)\s*(\d+)年$/);
+    const year = gradeMatch ? Number(gradeMatch[2]) : undefined;
+    const course = gradeMatch?.[1] ?? "学部";
+
+    const affiliation =
+      course === "修士"
+        ? year !== undefined
+          ? new MasterAffiliation({
+              school: "総合科学技術研究科" as never,
+              major: params.department as never,
+              year: year as never,
+            })
+          : new PartialMasterAffiliation({
+              school: "総合科学技術研究科" as never,
+              major: params.department as never,
+            } as never)
+        : year !== undefined
+          ? new UndergraduateAffiliation({
+              faculty: params.faculty as never,
+              department: params.department as never,
+              year: year as never,
+            })
+          : new PartialUndergraduateAffiliation({
+              faculty: params.faculty as never,
+              department: params.department as never,
+            } as never);
+
+    return recorded({
+      type: "student",
+      studentId: StudentId.fromString(params.studentId),
+      name: params.name,
+      affiliation,
+    });
+  } catch {
+    return notRecorded();
   }
-
-  const gradeMatch = params.grade.match(/^(学部|修士)\s*(\d+)年$/);
-  const year = gradeMatch ? Number(gradeMatch[2]) : 1;
-  const course = gradeMatch?.[1] ?? "学部";
-
-  const affiliation =
-    course === "修士"
-      ? new MasterAffiliation({
-          school: "総合科学技術研究科" as never,
-          major: params.department as never,
-          year: year as never,
-        })
-      : new UndergraduateAffiliation({
-          faculty: params.faculty as never,
-          department: params.department as never,
-          year: year as never,
-        });
-
-  return {
-    type: "student",
-    studentId: StudentId.fromString(params.studentId),
-    name: params.name,
-    affiliation,
-  };
 }
 
-function toResolution(
-  resolution: "resolved" | "unresolved",
+function toRecordedResolution(
+  resolution: "resolved" | "unresolved" | "",
   followUp: string | null,
 ): Recorded<Resolution> {
+  if (resolution === "") return notRecorded();
   if (resolution === "resolved") {
     return recorded({ type: "resolved" });
   }
   const followUpRecorded: Recorded<FollowUp> =
     followUp !== null ? recorded(followUp as FollowUp) : notRecorded();
   return recorded({ type: "unresolved", followUp: followUpRecorded });
+}
+
+function toAssignees(row: ImportRow): Recorded<NonEmptyArray<Assignee>> {
+  const assignees: Assignee[] = [
+    ...row.resolvedMemberIds.map((id): Assignee => ({ type: "resolved", memberId: memberId(id) })),
+    ...row.unresolvedAssigneeNames.map((name): Assignee => ({ type: "unresolved", name })),
+  ];
+  if (assignees.length === 0) return notRecorded();
+  return recorded(assignees as unknown as NonEmptyArray<Assignee>);
 }
 
 export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
@@ -105,14 +136,13 @@ export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
     try {
       const row = rows[i];
       const categories = row.categories as unknown as ConsultationCategory[];
-      const memberIds = row.assignedMemberIds.map((id) => memberId(id)) as unknown as MemberId[];
 
       await karteUseCases.importKarte.execute({
         id: karteId(randomUUID()),
         recordedAt: new Date(row.recordedAt),
         consultedAt: recorded(new Date(row.consultedAt)),
         lastUpdatedAt: new Date(row.recordedAt),
-        client: recorded(toClient(row.client)),
+        client: toRecordedClient(row.client),
         consent: row.consent,
         consultation: {
           categories:
@@ -123,12 +153,9 @@ export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
           troubleDetails: row.troubleDetails,
         },
         supportRecord: {
-          assignedMemberIds:
-            memberIds.length > 0
-              ? recorded(memberIds as unknown as NonEmptyArray<MemberId>)
-              : notRecorded(),
+          assignees: toAssignees(row),
           content: row.supportContent,
-          resolution: toResolution(row.resolution, row.followUp),
+          resolution: toRecordedResolution(row.resolution, row.followUp),
           workDuration:
             row.workDurationMinutes !== null
               ? recorded(workDuration(row.workDurationMinutes))

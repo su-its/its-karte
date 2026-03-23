@@ -1,5 +1,6 @@
 import type { CsvRow } from "@/lib/parseCsv";
 import type { KarteTableRow } from "@/components/karte-table";
+import type { KarteFormValues } from "@/components/karte-form";
 import type { ComparisonRow } from "@/components/duplicate-comparison";
 import type { ConsultationCategoryId } from "@shizuoka-its/core";
 import type { listKartesWithMembers } from "@/actions/karte";
@@ -50,8 +51,11 @@ const TAG_MAPPING: Record<string, ConsultationCategoryId> = {
   other: "other",
 };
 
-export function parseGradeType(grade: string): "student" | "staff" {
-  return grade === "職員" ? "staff" : "student";
+export function parseGradeType(grade: string): "student" | "staff" | "teacher" | "other" {
+  if (grade === "職員") return "staff";
+  if (grade === "教員") return "teacher";
+  if (grade === "その他") return "other";
+  return "student";
 }
 
 export function formatCsvAffiliation(row: CsvRow): string {
@@ -158,7 +162,8 @@ export function validateRow(
   const errors: string[] = [];
 
   if (!row.timestamp) errors.push("タイムスタンプが空");
-  if (!row.name) errors.push("氏名が空");
+  // 新形式では名前がない場合がある（学籍番号で代用）ため、名前と学籍番号の少なくとも一つが必須
+  if (!row.name && !row.studentId) errors.push("氏名または学籍番号が空");
   if (!row.troubleDetails) errors.push("トラブル詳細が空");
   if (!row.supportContent) errors.push("対応内容が空");
 
@@ -189,7 +194,11 @@ export function getErrorFields(row: CsvRow, memberMapping: Map<string, string>):
   const fields = new Set<keyof CsvRow>();
 
   if (!row.timestamp) fields.add("timestamp");
-  if (!row.name) fields.add("name");
+  // 新形式では名前がない場合がある（学籍番号で代用）ため、両方空の場合のみエラー
+  if (!row.name && !row.studentId) {
+    fields.add("name");
+    fields.add("studentId");
+  }
   if (!row.troubleDetails) fields.add("troubleDetails");
   if (!row.supportContent) fields.add("supportContent");
 
@@ -249,16 +258,25 @@ export function csvRowToTableRow(
       ? {
           type: "recorded",
           value: {
-            type: gradeType === "staff" ? "職員" : "学生",
+            type:
+              gradeType === "student"
+                ? "学生"
+                : gradeType === "teacher"
+                  ? "教員"
+                  : gradeType === "staff"
+                    ? "職員"
+                    : "その他",
             name: row.name,
             studentId: gradeType === "student" ? row.studentId : undefined,
-            affiliation: gradeType === "student" ? `学生 / ${formatCsvAffiliation(row)}` : "職員",
+            affiliation:
+              gradeType === "student" ? `学生 / ${formatCsvAffiliation(row)}` : undefined,
           },
         }
       : { type: "notRecorded" },
     consent: {
-      liabilityConsent: row.liabilityConsent === "同意する",
-      disclosureConsent: row.disclosureConsent === "同意する",
+      liabilityConsent: row.liabilityConsent === "同意する" || row.liabilityConsent === "同意あり",
+      disclosureConsent:
+        row.disclosureConsent === "同意する" || row.disclosureConsent === "同意あり",
     },
     consultation: {
       targetDevice: row.targetDevice
@@ -370,6 +388,128 @@ export function buildComparisonFields(
       isMatchKey: false,
     },
   ];
+}
+
+// ============================================================================
+// CsvRow ↔ KarteFormValues Conversion
+// ============================================================================
+
+/** CsvRowエラーフィールド → KarteFormValuesフィールドのマッピング */
+const CSV_TO_FORM_FIELD: Partial<Record<keyof CsvRow, (keyof KarteFormValues)[]>> = {
+  timestamp: ["consultedAt"],
+  name: ["clientName"],
+  studentId: ["studentId"],
+  faculty: ["faculty"],
+  department: ["department"],
+  grade: ["courseType", "year"],
+  troubleDetails: ["troubleDetails"],
+  supportContent: ["supportContent"],
+  assignee: ["assignedMemberIds"],
+  workDuration: ["workDurationMinutes"],
+  targetDevice: ["targetDevice"],
+};
+
+export function csvErrorFieldsToEditableFields(
+  csvFields: Set<keyof CsvRow>,
+): Set<keyof KarteFormValues> {
+  const formFields = new Set<keyof KarteFormValues>();
+  for (const csvField of csvFields) {
+    const mapped = CSV_TO_FORM_FIELD[csvField];
+    if (mapped) for (const f of mapped) formFields.add(f);
+  }
+  return formFields;
+}
+
+export function csvRowToFormValues(
+  row: CsvRow,
+  memberMapping: Map<string, string>,
+): Partial<KarteFormValues> {
+  const gradeType = parseGradeType(row.grade);
+  const gradeMatch = row.grade.match(/^(学部|修士|博士|専門職)\s*(\d+)年$/);
+  const courseType =
+    gradeMatch?.[1] === "修士"
+      ? "master"
+      : gradeMatch?.[1] === "博士"
+        ? "doctoral"
+        : gradeMatch?.[1] === "専門職"
+          ? "professional"
+          : "undergraduate";
+
+  const assigneeIds = row.assignee
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((id) => memberMapping.get(id))
+    .filter((id): id is string => id !== undefined);
+
+  const categories = parseCategoryTags(row.categoryTags);
+
+  return {
+    consultedAt: row.date
+      ? new Date(row.date.replace(/\//g, "-")).toISOString().slice(0, 16)
+      : row.timestamp
+        ? new Date(row.timestamp.replace(/\//g, "-")).toISOString().slice(0, 16)
+        : "",
+    clientType: gradeType as KarteFormValues["clientType"],
+    clientName: row.name,
+    studentId: row.studentId,
+    courseType,
+    faculty: row.faculty,
+    department: row.department,
+    year: gradeMatch?.[2] ?? "",
+    liabilityConsent: row.liabilityConsent === "同意する" || row.liabilityConsent === "同意あり",
+    disclosureConsent: row.disclosureConsent === "同意する" || row.disclosureConsent === "同意あり",
+    categoryIds: new Set(categories.map((c) => c.id)),
+    targetDevice: row.targetDevice,
+    troubleDetails: row.troubleDetails,
+    assignedMemberIds: new Set(assigneeIds),
+    supportContent: row.supportContent,
+    resolutionType: row.resolution === "解決" ? "resolved" : "unresolved",
+    followUp: row.followUp,
+    workDurationMinutes: row.workDuration || "",
+  };
+}
+
+export function formValuesToCsvRow(
+  formValues: KarteFormValues,
+  originalRow: CsvRow,
+  members: MemberInfo[],
+): CsvRow {
+  const courseLabels: Record<string, string> = {
+    undergraduate: "学部",
+    master: "修士",
+    doctoral: "博士",
+    professional: "専門職",
+  };
+  const gradeStr = formValues.year
+    ? `${courseLabels[formValues.courseType] ?? "学部"}${formValues.year}年`
+    : originalRow.grade;
+
+  const assigneeNames = [...formValues.assignedMemberIds]
+    .map((mid) => {
+      const member = members.find((m) => m.id === mid);
+      return member?.studentId ?? member?.name ?? mid;
+    })
+    .join(", ");
+
+  return {
+    ...originalRow,
+    date: formValues.consultedAt
+      ? new Date(formValues.consultedAt).toLocaleDateString("ja-JP")
+      : originalRow.date,
+    name: formValues.clientName,
+    studentId: formValues.studentId,
+    faculty: formValues.faculty,
+    department: formValues.department,
+    grade: gradeStr,
+    targetDevice: formValues.targetDevice,
+    troubleDetails: formValues.troubleDetails,
+    supportContent: formValues.supportContent,
+    assignee: assigneeNames || originalRow.assignee,
+    workDuration: formValues.workDurationMinutes,
+    resolution: formValues.resolutionType === "resolved" ? "解決" : "未解決",
+    followUp: formValues.followUp,
+  };
 }
 
 // ============================================================================

@@ -57,6 +57,10 @@ type KarteFormProps = {
   readOnly?: boolean;
   /** 指定されたフィールドのみ編集可能（他は読み取り専用） */
   editableFields?: Set<keyof KarteFormValues>;
+  /** フォーム値が変更されるたびに呼ばれるコールバック */
+  onFormChange?: (values: KarteFormValues) => void;
+  /** readOnly時のみ: IDに紐づかない対応者名のリスト */
+  unresolvedAssigneeNames?: string[];
 };
 
 const CLIENT_TYPES = [
@@ -113,6 +117,8 @@ export function KarteForm({
   submitLabel = "保存",
   readOnly = false,
   editableFields,
+  onFormChange,
+  unresolvedAssigneeNames = [],
 }: KarteFormProps) {
   const [values, setValues] = useState<KarteFormValues>(() => ({
     ...DEFAULTS,
@@ -144,15 +150,21 @@ export function KarteForm({
   }, [values.consultedAt]);
 
   function set<K extends keyof KarteFormValues>(key: K, value: KarteFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
+    setValues((prev) => {
+      const next = { ...prev, [key]: value };
+      onFormChange?.(next);
+      return next;
+    });
   }
 
   function toggleInSet(key: "categoryIds" | "assignedMemberIds", id: string) {
     setValues((prev) => {
-      const next = new Set(prev[key]);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return { ...prev, [key]: next };
+      const nextSet = new Set(prev[key]);
+      if (nextSet.has(id)) nextSet.delete(id);
+      else nextSet.add(id);
+      const next = { ...prev, [key]: nextSet };
+      onFormChange?.(next);
+      return next;
     });
   }
 
@@ -354,6 +366,7 @@ export function KarteForm({
           onToggle={(id) => toggleInSet("assignedMemberIds", id)}
           placeholder="名前・学籍番号で検索..."
           readOnly={!canEdit("assignedMemberIds")}
+          extraReadOnlyLabels={unresolvedAssigneeNames}
         />
 
         {renderTextarea("supportContent", "対応内容", "実施した対応の詳細を記入")}
@@ -466,6 +479,7 @@ function SearchableMultiSelect({
   onToggle,
   placeholder,
   readOnly = false,
+  extraReadOnlyLabels = [],
 }: {
   label: string;
   items: MultiSelectItem[];
@@ -473,6 +487,7 @@ function SearchableMultiSelect({
   onToggle: (id: string) => void;
   placeholder: string;
   readOnly?: boolean;
+  extraReadOnlyLabels?: string[];
 }) {
   const [query, setQuery] = useState("");
   const lowerQuery = query.toLowerCase();
@@ -483,18 +498,26 @@ function SearchableMultiSelect({
   const selectedItems = items.filter((item) => selected.has(item.id));
 
   if (readOnly) {
+    const hasAny = selectedItems.length > 0 || extraReadOnlyLabels.length > 0;
     return (
       <div className="mb-4">
         <div className="mb-2">
           <FieldLabel>{label}</FieldLabel>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {selectedItems.length > 0 ? (
-            selectedItems.map((item) => (
-              <Badge key={item.id} variant="secondary">
-                {item.label}
-              </Badge>
-            ))
+          {hasAny ? (
+            <>
+              {selectedItems.map((item) => (
+                <Badge key={item.id} variant="secondary">
+                  {item.label}
+                </Badge>
+              ))}
+              {extraReadOnlyLabels.map((name) => (
+                <Badge key={name} variant="outline" className="text-muted-foreground">
+                  {name}
+                </Badge>
+              ))}
+            </>
           ) : (
             <span className="text-sm text-muted-foreground">—</span>
           )}
@@ -569,84 +592,141 @@ function AffiliationFields({
   const departments = getDepartments(values.courseType, values.faculty);
   const maxYear = getMaxYear(values.courseType);
 
-  function renderSelect(
-    field: keyof KarteFormValues,
-    label: string,
-    options: { value: string; label: string }[],
-    placeholder: string,
-    displayValue?: string,
-  ) {
-    const raw = values[field];
-    const val = typeof raw === "string" ? raw : "";
-    const display = displayValue ?? options.find((o) => o.value === val)?.label ?? val;
-    if (!canEdit(field)) {
-      return (
-        <Field>
-          <FieldLabel>{label}</FieldLabel>
-          <div className="text-sm py-2.5 px-1">{display || "—"}</div>
-        </Field>
-      );
-    }
+  const editable = canEdit("courseType");
+
+  if (!editable) {
+    const courseLabel = COURSE_TYPES.find((ct) => ct.value === values.courseType)?.label ?? "";
+    const parts = [
+      courseLabel,
+      values.faculty,
+      values.department,
+      values.year ? `${values.year}年` : "",
+    ].filter(Boolean);
     return (
-      <Field>
-        <FieldLabel>{label}</FieldLabel>
-        <Select
-          value={val}
-          onValueChange={(v) => {
-            if (v) set(field, v as never);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue>{display || placeholder}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
+      <div className="mt-4">
+        <FieldLabel>所属</FieldLabel>
+        <div className="text-sm py-2.5 px-1">{parts.join(" / ") || "—"}</div>
+      </div>
     );
   }
 
+  function selectCourseType(ct: string) {
+    set("courseType", ct as never);
+    const nextFaculties = getFaculties(ct);
+    if (nextFaculties.length === 1) {
+      selectFacultyWithCourse(ct, nextFaculties[0].name);
+    } else {
+      set("faculty", "" as never);
+      set("department", "" as never);
+      set("year", "" as never);
+    }
+  }
+
+  function selectFacultyWithCourse(ct: string, f: string) {
+    set("faculty", f as never);
+    const nextDepts = getDepartments(ct, f);
+    if (nextDepts.length === 1) {
+      set("department", nextDepts[0] as never);
+    } else {
+      set("department", "" as never);
+    }
+    const maxY = getMaxYear(ct);
+    if (maxY === 1) {
+      set("year", "1" as never);
+    } else {
+      set("year", "" as never);
+    }
+  }
+
+  function selectFaculty(f: string) {
+    selectFacultyWithCourse(values.courseType, f);
+  }
+
+  function selectDepartment(d: string) {
+    set("department", d as never);
+    if (maxYear === 1) {
+      set("year", "1" as never);
+    } else {
+      set("year", "" as never);
+    }
+  }
+
   return (
-    <div className="grid grid-cols-4 gap-4 mt-4">
-      {renderSelect(
-        "courseType",
-        "課程",
-        COURSE_TYPES.map((ct) => ({ value: ct.value, label: ct.label })),
-        "選択",
+    <div className="mt-4 flex flex-col gap-3">
+      {/* 課程 */}
+      <AffiliationStep label="課程">
+        {COURSE_TYPES.map((ct) => (
+          <Button
+            key={ct.value}
+            type="button"
+            size="sm"
+            variant={values.courseType === ct.value ? "default" : "outline"}
+            onClick={() => selectCourseType(ct.value)}
+          >
+            {ct.label}
+          </Button>
+        ))}
+      </AffiliationStep>
+
+      {/* 学部・研究科 */}
+      {values.courseType && faculties.length > 0 && (
+        <AffiliationStep label="学部・研究科">
+          {faculties.map((f) => (
+            <Button
+              key={f.name}
+              type="button"
+              size="sm"
+              variant={values.faculty === f.name ? "default" : "outline"}
+              onClick={() => selectFaculty(f.name)}
+            >
+              {f.name}
+            </Button>
+          ))}
+        </AffiliationStep>
       )}
-      {renderSelect(
-        "faculty",
-        "学部・研究科",
-        faculties.map((f) => ({ value: f.name, label: f.name })),
-        "選択",
-        values.faculty || undefined,
+
+      {/* 学科・専攻 */}
+      {values.faculty && departments.length > 0 && (
+        <AffiliationStep label="学科・専攻">
+          {departments.map((d) => (
+            <Button
+              key={d}
+              type="button"
+              size="sm"
+              variant={values.department === d ? "default" : "outline"}
+              onClick={() => selectDepartment(d)}
+            >
+              {d}
+            </Button>
+          ))}
+        </AffiliationStep>
       )}
-      {departments.length > 0 ? (
-        renderSelect(
-          "department",
-          "学科・専攻",
-          departments.map((d) => ({ value: d, label: d })),
-          "選択",
-          values.department || undefined,
-        )
-      ) : (
-        <Field>
-          <FieldLabel>学科・専攻</FieldLabel>
-          <div className="text-sm py-2.5 px-1 text-muted-foreground">—</div>
-        </Field>
+
+      {/* 学年 */}
+      {values.faculty && (
+        <AffiliationStep label="学年">
+          {Array.from({ length: maxYear }, (_, i) => (
+            <Button
+              key={i + 1}
+              type="button"
+              size="sm"
+              variant={values.year === String(i + 1) ? "default" : "outline"}
+              onClick={() => set("year", String(i + 1) as never)}
+            >
+              {i + 1}年
+            </Button>
+          ))}
+        </AffiliationStep>
       )}
-      {renderSelect(
-        "year",
-        "学年",
-        Array.from({ length: maxYear }, (_, i) => ({ value: String(i + 1), label: `${i + 1}年` })),
-        "選択",
-        values.year ? `${values.year}年` : undefined,
-      )}
+    </div>
+  );
+}
+
+function AffiliationStep({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-muted-foreground mb-1.5">{label}</div>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
     </div>
   );
 }
