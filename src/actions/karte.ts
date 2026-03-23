@@ -4,6 +4,10 @@ import {
   createKarteUseCases,
   createMemberUseCases,
   karteId,
+  memberId,
+  workDuration,
+  StudentId,
+  CONSULTATION_CATEGORIES,
   type Karte,
   type Client,
   type Member,
@@ -11,11 +15,15 @@ import {
   type Resolution,
   type MemberId,
   type Affiliation,
+  type ConsultationCategory,
+  type FollowUp,
+  type NonEmptyArray,
   UndergraduateAffiliation,
   MasterAffiliation,
   DoctoralAffiliation,
   ProfessionalAffiliation,
 } from "@shizuoka-its/core";
+import { randomUUID } from "node:crypto";
 
 const karteUseCases = createKarteUseCases();
 const memberUseCases = createMemberUseCases();
@@ -45,8 +53,9 @@ export async function listKartesWithMembers() {
 
 export async function getKarte(id: string) {
   const { karte } = await karteUseCases.getKarte.execute({
-    karteId: karteId(id),
+    id: karteId(id),
   });
+  if (!karte) return null;
   return serializeKarte(karte);
 }
 
@@ -80,41 +89,98 @@ const CLIENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function formatAffiliation(affiliation: Affiliation): string {
-  const value = affiliation.getValue() as Record<string, unknown>;
   if (affiliation instanceof UndergraduateAffiliation) {
-    return `${value.faculty} ${value.department ?? ""} ${value.year}年`.trim();
+    const v = affiliation.getValue();
+    return `${String(v.faculty)} ${String("department" in v ? v.department : "")} ${String(v.year)}年`.trim();
   }
   if (affiliation instanceof MasterAffiliation) {
-    return `${value.school} ${value.major ?? ""} M${value.year}`.trim();
+    const v = affiliation.getValue();
+    const major = "major" in v ? String(v.major) : "";
+    return `${String(v.school)} ${major} M${String(v.year)}`.trim();
   }
   if (affiliation instanceof DoctoralAffiliation) {
-    return `${value.school} ${value.major ?? ""} D${value.year}`.trim();
+    const v = affiliation.getValue();
+    return `${String(v.school)} ${String(v.major)} D${String(v.year)}`.trim();
   }
   if (affiliation instanceof ProfessionalAffiliation) {
-    return `${value.school} ${value.major ?? ""} ${value.year}年`.trim();
+    const v = affiliation.getValue();
+    return `${String(v.school)} ${String(v.major)} ${String(v.year)}年`.trim();
   }
   return "";
+}
+
+type SerializedAffiliationData = {
+  courseType: "undergraduate" | "master" | "doctoral" | "professional";
+  faculty: string;
+  department: string;
+  year: number;
+};
+
+function serializeAffiliationData(affiliation: Affiliation): SerializedAffiliationData {
+  const value = affiliation.getValue() as Record<string, unknown>;
+  if (affiliation instanceof UndergraduateAffiliation) {
+    return {
+      courseType: "undergraduate",
+      faculty: (value.faculty ?? "") as string,
+      department: (value.department ?? value.program ?? "") as string,
+      year: (value.year ?? 1) as number,
+    };
+  }
+  if (affiliation instanceof MasterAffiliation) {
+    return {
+      courseType: "master",
+      faculty: (value.school ?? "") as string,
+      department: (value.major ?? "") as string,
+      year: (value.year ?? 1) as number,
+    };
+  }
+  if (affiliation instanceof DoctoralAffiliation) {
+    return {
+      courseType: "doctoral",
+      faculty: (value.school ?? "") as string,
+      department: (value.major ?? "") as string,
+      year: (value.year ?? 1) as number,
+    };
+  }
+  return {
+    courseType: "professional",
+    faculty: (value.school ?? "") as string,
+    department: (value.major ?? "") as string,
+    year: (value.year ?? 1) as number,
+  };
 }
 
 function serializeClient(client: Recorded<Client>):
   | {
       type: "recorded";
-      value: { type: string; name: string; studentId?: string; affiliation?: string };
+      value: {
+        type: string;
+        name: string;
+        studentId?: string;
+        affiliation?: string;
+        affiliationData?: SerializedAffiliationData;
+      };
     }
   | { type: "notRecorded" } {
   if (client.type === "notRecorded") return { type: "notRecorded" };
   const c = client.value;
   const label = CLIENT_TYPE_LABELS[c.type] ?? c.type;
-  const studentId = c.type === "student" ? c.studentId.getValue() : undefined;
-  const affiliation = c.type === "student" ? formatAffiliation(c.affiliation) : undefined;
+  if (c.type === "student") {
+    const affDisplay = formatAffiliation(c.affiliation);
+    return {
+      type: "recorded",
+      value: {
+        type: label,
+        name: c.name,
+        studentId: c.studentId.getValue(),
+        affiliation: `${label} / ${affDisplay}`,
+        affiliationData: serializeAffiliationData(c.affiliation),
+      },
+    };
+  }
   return {
     type: "recorded",
-    value: {
-      type: label,
-      name: c.name,
-      studentId,
-      affiliation: affiliation ? `${label} / ${affiliation}` : label,
-    },
+    value: { type: label, name: c.name, affiliation: label },
   };
 }
 
@@ -166,4 +232,119 @@ function serializeMember(member: Member) {
     name: member.getName(),
     studentId: member.getStudentId().getValue(),
   };
+}
+
+// ============================================================================
+// Create / Correct Actions
+// ============================================================================
+
+export type KarteFormInput = {
+  consultedAt: string;
+  clientType: "student" | "teacher" | "staff" | "other";
+  clientName: string;
+  studentId: string;
+  courseType: "undergraduate" | "master" | "doctoral" | "professional";
+  faculty: string;
+  department: string;
+  year: number;
+  liabilityConsent: boolean;
+  disclosureConsent: boolean;
+  categoryIds: string[];
+  targetDevice: string;
+  troubleDetails: string;
+  assignedMemberIds: string[];
+  supportContent: string;
+  resolutionType: "resolved" | "unresolved";
+  followUp: string;
+  workDurationMinutes: number;
+};
+
+function buildClient(input: KarteFormInput): Client {
+  const name = input.clientName;
+  switch (input.clientType) {
+    case "student": {
+      const sid = StudentId.fromString(input.studentId);
+      const affiliation = buildAffiliation(input);
+      return { type: "student", studentId: sid, name, affiliation };
+    }
+    case "teacher":
+      return { type: "teacher", name };
+    case "staff":
+      return { type: "staff", name };
+    case "other":
+      return { type: "other", name };
+  }
+}
+
+function buildAffiliation(input: KarteFormInput): Affiliation {
+  switch (input.courseType) {
+    case "undergraduate":
+      return new UndergraduateAffiliation({
+        faculty: input.faculty as never,
+        department: input.department as never,
+        year: input.year as never,
+      });
+    case "master":
+      return new MasterAffiliation({
+        school: input.faculty as never,
+        major: input.department as never,
+        year: input.year as never,
+      });
+    case "doctoral":
+      return new DoctoralAffiliation({
+        school: input.faculty as never,
+        major: input.department as never,
+        year: input.year as never,
+      });
+    case "professional":
+      return new ProfessionalAffiliation({
+        school: input.faculty as never,
+        major: input.department as never,
+        year: input.year as never,
+      });
+  }
+}
+
+function buildCategories(ids: string[]): NonEmptyArray<ConsultationCategory> {
+  const cats = ids
+    .map((id) => CONSULTATION_CATEGORIES.find((c) => c.id === id))
+    .filter((c): c is ConsultationCategory => c !== undefined);
+  if (cats.length === 0) throw new Error("カテゴリを1つ以上選択してください");
+  return cats as unknown as NonEmptyArray<ConsultationCategory>;
+}
+
+export async function createKarte(input: KarteFormInput) {
+  const id = karteId(randomUUID());
+  const client = buildClient(input);
+  const categories = buildCategories(input.categoryIds);
+  const memberIds = input.assignedMemberIds.map((mid) => memberId(mid));
+  if (memberIds.length === 0) throw new Error("担当者を1人以上選択してください");
+
+  const resolution =
+    input.resolutionType === "resolved"
+      ? { type: "resolved" as const }
+      : { type: "unresolved" as const, followUp: input.followUp as FollowUp };
+
+  await karteUseCases.createKarte.execute({
+    id,
+    consultedAt: new Date(input.consultedAt),
+    client,
+    consent: {
+      liabilityConsent: input.liabilityConsent,
+      disclosureConsent: input.disclosureConsent,
+    },
+    consultation: {
+      categories,
+      targetDevice: input.targetDevice,
+      troubleDetails: input.troubleDetails,
+    },
+    supportRecord: {
+      assignedMemberIds: memberIds as unknown as NonEmptyArray<MemberId>,
+      content: input.supportContent,
+      resolution,
+      workDuration: workDuration(input.workDurationMinutes),
+    },
+  });
+
+  return { id: id as string };
 }

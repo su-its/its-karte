@@ -1,22 +1,22 @@
 /** CSVの1行を表す生データ */
 export type CsvRow = {
-  readonly timestamp: string;
-  readonly date: string;
-  readonly studentId: string;
-  readonly name: string;
-  readonly faculty: string;
-  readonly department: string;
-  readonly grade: string;
-  readonly disclosureConsent: string;
-  readonly liabilityConsent: string;
-  readonly targetDevice: string;
-  readonly categoryTags: string;
-  readonly troubleDetails: string;
-  readonly supportContent: string;
-  readonly resolution: string;
-  readonly followUp: string;
-  readonly assignee: string;
-  readonly workDuration: string;
+  timestamp: string;
+  date: string;
+  studentId: string;
+  name: string;
+  faculty: string;
+  department: string;
+  grade: string;
+  disclosureConsent: string;
+  liabilityConsent: string;
+  targetDevice: string;
+  categoryTags: string;
+  troubleDetails: string;
+  supportContent: string;
+  resolution: string;
+  followUp: string;
+  assignee: string;
+  workDuration: string;
 };
 
 /**

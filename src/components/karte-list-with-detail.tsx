@@ -1,0 +1,104 @@
+"use client";
+
+import { useState } from "react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { KarteTable, type KarteTableRow } from "@/components/karte-table";
+import {
+  KarteForm,
+  type KarteFormValues,
+  type MemberOption,
+  type CategoryOption,
+} from "@/components/karte-form";
+
+type Props = {
+  kartes: KarteTableRow[];
+  members: MemberOption[];
+  categories: CategoryOption[];
+};
+
+/** KarteTableRow → KarteFormValues（読み取り専用表示用） */
+function toFormValues(row: KarteTableRow): Partial<KarteFormValues> {
+  const client = row.client.type === "recorded" ? row.client.value : null;
+  const resolution = row.supportRecord.resolution;
+  const resType = resolution.type === "recorded" ? resolution.value.type : "resolved";
+  const followUp =
+    resolution.type === "recorded" && resolution.value.type === "unresolved"
+      ? (resolution.value.followUp ?? "")
+      : "";
+
+  const affData = client?.affiliationData;
+
+  return {
+    consultedAt:
+      row.consultedAt.type === "recorded"
+        ? new Date(row.consultedAt.value).toISOString().slice(0, 16)
+        : "",
+    clientType: (client?.type === "学生"
+      ? "student"
+      : client?.type === "教員"
+        ? "teacher"
+        : client?.type === "職員"
+          ? "staff"
+          : "other") as KarteFormValues["clientType"],
+    clientName: client?.name ?? "",
+    studentId: client?.studentId ?? "",
+    courseType: affData?.courseType ?? "undergraduate",
+    faculty: affData?.faculty ?? "",
+    department: affData?.department ?? "",
+    year: affData ? String(affData.year) : "",
+    liabilityConsent: row.consent.liabilityConsent,
+    disclosureConsent: row.consent.disclosureConsent,
+    categoryIds: new Set(
+      row.consultation.categories.type === "recorded"
+        ? row.consultation.categories.value.map((c) => c.id)
+        : [],
+    ),
+    targetDevice:
+      row.consultation.targetDevice.type === "recorded" ? row.consultation.targetDevice.value : "",
+    troubleDetails: row.consultation.troubleDetails,
+    assignedMemberIds: new Set<string>(),
+    supportContent: row.supportRecord.content,
+    resolutionType: resType as "resolved" | "unresolved",
+    followUp,
+    workDurationMinutes:
+      row.supportRecord.workDuration.type === "recorded"
+        ? String(row.supportRecord.workDuration.value)
+        : "",
+  };
+}
+
+export function KarteListWithDetail({ kartes, members, categories }: Props) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const selectedRow = selectedIndex !== null ? kartes[selectedIndex] : null;
+
+  return (
+    <>
+      <KarteTable kartes={kartes} onRowClick={(_, index) => setSelectedIndex(index)} />
+
+      <Sheet open={selectedIndex !== null} onOpenChange={() => setSelectedIndex(null)}>
+        <SheetContent className="w-[800px] sm:w-[900px] overflow-y-auto p-8">
+          <SheetHeader>
+            <SheetTitle>
+              カルテ詳細
+              {selectedRow && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  {new Date(selectedRow.recordedAt).toLocaleString("ja-JP")}
+                </span>
+              )}
+            </SheetTitle>
+          </SheetHeader>
+          {selectedRow && (
+            <div className="mt-4">
+              <KarteForm
+                members={members}
+                categories={categories}
+                initialValues={toFormValues(selectedRow)}
+                readOnly
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
