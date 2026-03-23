@@ -77,7 +77,11 @@ export function KarteListWithDetail({ kartes, members, categories }: Props) {
 
   return (
     <>
-      <KarteTable kartes={kartes} onRowClick={(_, index) => setSelectedIndex(index)} />
+      <KarteTable
+        kartes={kartes}
+        members={members}
+        onRowClick={(_, index) => setSelectedIndex(index)}
+      />
 
       <Sheet open={selectedIndex !== null} onOpenChange={() => setSelectedIndex(null)}>
         <SheetContent className="overflow-y-auto p-8">

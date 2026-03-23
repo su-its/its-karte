@@ -26,7 +26,7 @@ export default async function KartesPage() {
 
       <KarteListWithDetail
         kartes={kartes}
-        members={members.map((m) => ({ id: m.id, name: m.name, studentId: m.studentId }))}
+        members={members}
         categories={CONSULTATION_CATEGORIES.map((c) => ({ id: c.id, displayName: c.displayName }))}
       />
     </main>

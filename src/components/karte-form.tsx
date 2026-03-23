@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getFaculties, getDepartments, getMaxYear } from "@/lib/universityStructure";
@@ -44,7 +45,13 @@ export type KarteFormValues = {
   workDurationMinutes: string;
 };
 
-export type MemberOption = { id: string; name: string; studentId?: string };
+export type MemberOption = {
+  id: string;
+  name: string;
+  studentId?: string;
+  department?: string;
+  email?: string;
+};
 export type CategoryOption = { id: string; displayName: string };
 
 type KarteFormProps = {
@@ -61,6 +68,8 @@ type KarteFormProps = {
   onFormChange?: (values: KarteFormValues) => void;
   /** readOnly時のみ: IDに紐づかない対応者名のリスト */
   unresolvedAssigneeNames?: string[];
+  /** editableFields使用時: 修正前の値（差分表示用） */
+  originalValues?: Partial<KarteFormValues>;
 };
 
 const CLIENT_TYPES = [
@@ -119,6 +128,7 @@ export function KarteForm({
   editableFields,
   onFormChange,
   unresolvedAssigneeNames = [],
+  originalValues,
 }: KarteFormProps) {
   const [values, setValues] = useState<KarteFormValues>(() => ({
     ...DEFAULTS,
@@ -149,12 +159,20 @@ export function KarteForm({
     return () => clearInterval(timer);
   }, [values.consultedAt]);
 
+  const onFormChangeRef = useRef(onFormChange);
+  onFormChangeRef.current = onFormChange;
+  const isInitialMount = useRef(true);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    onFormChangeRef.current?.(values);
+  }, [values]);
+
   function set<K extends keyof KarteFormValues>(key: K, value: KarteFormValues[K]) {
-    setValues((prev) => {
-      const next = { ...prev, [key]: value };
-      onFormChange?.(next);
-      return next;
-    });
+    setValues((prev) => ({ ...prev, [key]: value }));
   }
 
   function toggleInSet(key: "categoryIds" | "assignedMemberIds", id: string) {
@@ -162,9 +180,7 @@ export function KarteForm({
       const nextSet = new Set(prev[key]);
       if (nextSet.has(id)) nextSet.delete(id);
       else nextSet.add(id);
-      const next = { ...prev, [key]: nextSet };
-      onFormChange?.(next);
-      return next;
+      return { ...prev, [key]: nextSet };
     });
   }
 
@@ -191,6 +207,24 @@ export function KarteForm({
     return typeof raw === "string" ? raw : typeof raw === "number" ? String(raw) : "";
   }
 
+  function originalFieldValue(field: keyof KarteFormValues): string | undefined {
+    if (!originalValues) return undefined;
+    const raw = originalValues[field];
+    if (raw === undefined) return undefined;
+    return typeof raw === "string" ? raw : typeof raw === "number" ? String(raw) : "";
+  }
+
+  function OriginalValueHint({ field }: { field: keyof KarteFormValues }) {
+    if (!editableFields?.has(field)) return null;
+    const orig = originalFieldValue(field);
+    if (orig === undefined) return null;
+    return (
+      <div className="text-xs text-muted-foreground mb-1">
+        修正前: <span className="font-mono">{orig || "（空）"}</span>
+      </div>
+    );
+  }
+
   function renderField(
     field: keyof KarteFormValues,
     label: string,
@@ -203,10 +237,18 @@ export function KarteForm({
     },
   ) {
     const val = fieldValue(field);
+    const isEditable = canEdit(field);
+    const orig = originalFieldValue(field);
+    const isModified = isEditable && orig !== undefined && orig !== val;
     return (
       <Field>
-        <FieldLabel>{label}</FieldLabel>
-        {canEdit(field) ? (
+        <FieldLabel
+          className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
+        >
+          {label}
+        </FieldLabel>
+        <OriginalValueHint field={field} />
+        {isEditable ? (
           <Input
             type={opts?.type}
             min={opts?.min}
@@ -215,6 +257,13 @@ export function KarteForm({
             onChange={(e) => set(field, e.target.value as never)}
             placeholder={opts?.placeholder}
             required={opts?.required}
+            className={
+              isModified
+                ? "border-green-500"
+                : editableFields?.has(field)
+                  ? "border-destructive"
+                  : undefined
+            }
           />
         ) : (
           <div className="text-sm py-2.5 px-1 min-h-[2.25rem]">
@@ -227,16 +276,31 @@ export function KarteForm({
 
   function renderTextarea(field: keyof KarteFormValues, label: string, placeholder?: string) {
     const val = fieldValue(field);
+    const isEditable = canEdit(field);
+    const orig = originalFieldValue(field);
+    const isModified = isEditable && orig !== undefined && orig !== val;
     return (
       <Field>
-        <FieldLabel>{label}</FieldLabel>
-        {canEdit(field) ? (
+        <FieldLabel
+          className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
+        >
+          {label}
+        </FieldLabel>
+        <OriginalValueHint field={field} />
+        {isEditable ? (
           <Textarea
             value={val}
             onChange={(e) => set(field, e.target.value as never)}
             placeholder={placeholder}
             rows={4}
             required
+            className={
+              isModified
+                ? "border-green-500"
+                : editableFields?.has(field)
+                  ? "border-destructive"
+                  : undefined
+            }
           />
         ) : (
           <div className="text-sm py-2.5 px-1 whitespace-pre-wrap">
@@ -355,19 +419,26 @@ export function KarteForm({
 
       {/* 対応記録 */}
       <Section title="対応記録">
-        <SearchableMultiSelect
-          label="担当者"
-          items={members.map((m) => ({
-            id: m.id,
-            label: m.name,
-            searchText: `${m.name} ${m.studentId ?? ""}`,
-          }))}
-          selected={values.assignedMemberIds}
-          onToggle={(id) => toggleInSet("assignedMemberIds", id)}
-          placeholder="名前・学籍番号で検索..."
-          readOnly={!canEdit("assignedMemberIds")}
-          extraReadOnlyLabels={unresolvedAssigneeNames}
-        />
+        {!canEdit("assignedMemberIds") ? (
+          <AssigneeReadOnly
+            members={members}
+            selectedIds={values.assignedMemberIds}
+            unresolvedNames={unresolvedAssigneeNames}
+          />
+        ) : (
+          <SearchableMultiSelect
+            label="担当者"
+            items={members.map((m) => ({
+              id: m.id,
+              label: m.name,
+              searchText: `${m.name} ${m.studentId ?? ""}`,
+              hoverDetail: <MemberHoverContent member={m} />,
+            }))}
+            selected={values.assignedMemberIds}
+            onToggle={(id) => toggleInSet("assignedMemberIds", id)}
+            placeholder="名前・学籍番号で検索..."
+          />
+        )}
 
         {renderTextarea("supportContent", "対応内容", "実施した対応の詳細を記入")}
 
@@ -470,7 +541,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-type MultiSelectItem = { id: string; label: string; searchText: string };
+type MultiSelectItem = {
+  id: string;
+  label: string;
+  searchText: string;
+  /** ホバー時に表示する追加情報 */
+  hoverDetail?: React.ReactNode;
+};
 
 function SearchableMultiSelect({
   label,
@@ -534,16 +611,25 @@ function SearchableMultiSelect({
 
       {selectedItems.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {selectedItems.map((item) => (
-            <Badge
-              key={item.id}
-              variant="default"
-              className="cursor-pointer select-none"
-              onClick={() => onToggle(item.id)}
-            >
-              {item.label} ×
-            </Badge>
-          ))}
+          {selectedItems.map((item) => {
+            const badge = (
+              <Badge
+                key={item.id}
+                variant="default"
+                className="cursor-pointer select-none"
+                onClick={() => onToggle(item.id)}
+              >
+                {item.label} ×
+              </Badge>
+            );
+            if (!item.hoverDetail) return badge;
+            return (
+              <HoverCard key={item.id}>
+                <HoverCardTrigger>{badge}</HoverCardTrigger>
+                <HoverCardContent>{item.hoverDetail}</HoverCardContent>
+              </HoverCard>
+            );
+          })}
         </div>
       )}
 
@@ -557,7 +643,7 @@ function SearchableMultiSelect({
       <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
         {filtered.map((item) => {
           const isSelected = selected.has(item.id);
-          return (
+          const badge = (
             <Badge
               key={item.id}
               variant={isSelected ? "secondary" : "outline"}
@@ -569,6 +655,13 @@ function SearchableMultiSelect({
             >
               {item.label}
             </Badge>
+          );
+          if (!item.hoverDetail) return badge;
+          return (
+            <HoverCard key={item.id}>
+              <HoverCardTrigger>{badge}</HoverCardTrigger>
+              <HoverCardContent>{item.hoverDetail}</HoverCardContent>
+            </HoverCard>
           );
         })}
         {filtered.length === 0 && (
@@ -727,6 +820,67 @@ function AffiliationStep({ label, children }: { label: string; children: React.R
     <div>
       <div className="text-xs font-medium text-muted-foreground mb-1.5">{label}</div>
       <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+function AssigneeReadOnly({
+  members,
+  selectedIds,
+  unresolvedNames,
+}: {
+  members: MemberOption[];
+  selectedIds: Set<string>;
+  unresolvedNames: string[];
+}) {
+  const resolvedMembers = members.filter((m) => selectedIds.has(m.id));
+  const hasAny = resolvedMembers.length > 0 || unresolvedNames.length > 0;
+
+  return (
+    <div className="mb-4">
+      <div className="mb-2">
+        <FieldLabel>担当者</FieldLabel>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {hasAny ? (
+          <>
+            {resolvedMembers.map((m) => (
+              <HoverCard key={m.id}>
+                <HoverCardTrigger>
+                  <Badge variant="secondary" className="cursor-default">
+                    {m.name}
+                  </Badge>
+                </HoverCardTrigger>
+                <HoverCardContent>
+                  <MemberHoverContent member={m} />
+                </HoverCardContent>
+              </HoverCard>
+            ))}
+            {unresolvedNames.map((name) => (
+              <Badge key={name} variant="outline" className="text-muted-foreground">
+                {name}
+              </Badge>
+            ))}
+          </>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemberHoverContent({ member }: { member: MemberOption }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="font-semibold">{member.name}</p>
+      {member.studentId && (
+        <div className="text-xs text-muted-foreground font-mono">{member.studentId}</div>
+      )}
+      {member.department && (
+        <div className="text-xs text-muted-foreground">{member.department}</div>
+      )}
+      {member.email && <div className="text-xs text-muted-foreground">{member.email}</div>}
     </div>
   );
 }

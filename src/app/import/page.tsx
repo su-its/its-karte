@@ -16,7 +16,6 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { KarteTable } from "@/components/karte-table";
 import {
@@ -35,7 +34,6 @@ import {
   LoaderIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
-  DownloadIcon,
 } from "lucide-react";
 import { Stepper } from "@/components/stepper";
 import {
@@ -166,24 +164,25 @@ export default function ImportPage() {
     }
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
+  function handleFileFromDrop(file: File) {
+    void processFile(file);
   }
 
-  function handleFileFromDrop(file: File) {
-    processFile(file);
-  }
+  const [originalFormValues, setOriginalFormValues] = useState<
+    Partial<KarteFormValues> | undefined
+  >(undefined);
 
   function openRowEditor(index: number) {
     const errorFields = getErrorFields(rows[index], memberMapping);
     setEditingRowIndex(index);
     setFrozenEditableFields(errorFields);
+    setOriginalFormValues(csvRowToFormValues(rows[index], memberMapping));
   }
 
   function closeRowEditor() {
     setEditingRowIndex(null);
     setFrozenEditableFields(new Set());
+    setOriginalFormValues(undefined);
   }
 
   function startErrorFlow() {
@@ -215,7 +214,7 @@ export default function ImportPage() {
       setSkippedIndices(new Set(duplicateMap.keys()));
       setStep("duplicates");
     } else {
-      handleImport(new Set());
+      void handleImport(new Set());
     }
   }
 
@@ -293,7 +292,14 @@ export default function ImportPage() {
   const editingTableRow = editingRowIndex !== null ? tableRows[editingRowIndex] : null;
 
   const formMembers: MemberOption[] = useMemo(
-    () => members.map((m) => ({ id: m.id, name: m.name, studentId: m.studentId })),
+    () =>
+      members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        studentId: m.studentId,
+        department: m.department,
+        email: m.email,
+      })),
     [members],
   );
   const [formCategories, setFormCategories] = useState<CategoryOption[]>([]);
@@ -602,11 +608,42 @@ export default function ImportPage() {
           </SheetHeader>
           {editingRow && editingRowIndex !== null && (
             <div className="flex flex-col gap-4 mt-6">
+              {frozenEditableFields.size > 0 && (
+                <div className="flex justify-between">
+                  <Button variant="ghost" size="sm" onClick={goToPrevError}>
+                    <ArrowLeftIcon data-icon="inline-start" /> 前のエラー
+                  </Button>
+                  {editingTableRow?.error ? (
+                    <Button variant="outline" size="sm" disabled>
+                      エラーを修正してください
+                    </Button>
+                  ) : errorIndices.size > 0 ? (
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={goToNextError}
+                    >
+                      <CheckCircle2Icon data-icon="inline-start" />
+                      次のエラーへ（残り{errorIndices.size}件）
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={closeRowEditor}
+                    >
+                      <CheckCircle2Icon data-icon="inline-start" />
+                      すべて解決しました
+                    </Button>
+                  )}
+                </div>
+              )}
               <KarteForm
                 members={formMembers}
                 categories={formCategories}
                 initialValues={csvRowToFormValues(editingRow, memberMapping)}
                 editableFields={formEditableFields}
+                originalValues={originalFormValues}
                 onFormChange={(formVals) => {
                   const updated = formValuesToCsvRow(formVals, editingRow, members);
                   setRows((prev) => prev.map((r, i) => (i === editingRowIndex ? updated : r)));

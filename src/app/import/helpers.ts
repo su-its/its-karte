@@ -9,7 +9,13 @@ import type { listKartesWithMembers } from "@/actions/karte";
 // Types
 // ============================================================================
 
-export type MemberInfo = { id: string; name: string; studentId: string };
+export type MemberInfo = {
+  id: string;
+  name: string;
+  studentId: string;
+  department: string;
+  email: string;
+};
 export type ExistingKarte = Awaited<ReturnType<typeof listKartesWithMembers>>[number];
 
 export type DuplicateMatch = {

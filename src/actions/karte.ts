@@ -99,31 +99,35 @@ const CLIENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function formatAffiliation(affiliation: Affiliation | PartialAffiliation): string {
-  const v = affiliation.getValue() as Record<string, unknown>;
+  const v = affiliation.getValue() as Record<string, string | number | undefined>;
   const faculty = String(v.faculty ?? v.school ?? "");
   const dept = String(v.department ?? v.major ?? v.program ?? "");
-  const year = "year" in v ? `${v.year}年` : "";
+  const yearNum = v.year !== undefined ? Number(v.year) : null;
 
   if (
     affiliation instanceof UndergraduateAffiliation ||
     affiliation instanceof PartialUndergraduateAffiliation
   ) {
-    return `${faculty} ${dept} ${year}`.trim();
+    return [faculty, dept, yearNum !== null ? `${String(yearNum)}年` : ""]
+      .filter(Boolean)
+      .join(" ");
   }
   if (affiliation instanceof MasterAffiliation || affiliation instanceof PartialMasterAffiliation) {
-    return `${faculty} ${dept} ${year ? `M${v.year}` : ""}`.trim();
+    return [faculty, dept, yearNum !== null ? `M${String(yearNum)}` : ""].filter(Boolean).join(" ");
   }
   if (
     affiliation instanceof DoctoralAffiliation ||
     affiliation instanceof PartialDoctoralAffiliation
   ) {
-    return `${faculty} ${dept} ${year ? `D${v.year}` : ""}`.trim();
+    return [faculty, dept, yearNum !== null ? `D${String(yearNum)}` : ""].filter(Boolean).join(" ");
   }
   if (
     affiliation instanceof ProfessionalAffiliation ||
     affiliation instanceof PartialProfessionalAffiliation
   ) {
-    return `${faculty} ${dept} ${year}`.trim();
+    return [faculty, dept, yearNum !== null ? `${String(yearNum)}年` : ""]
+      .filter(Boolean)
+      .join(" ");
   }
   return "";
 }
@@ -260,6 +264,8 @@ function serializeMember(member: Member) {
     id: member.id as string,
     name: member.getName(),
     studentId: member.getStudentId().getValue(),
+    department: member.getDepartment().getValue(),
+    email: member.getEmail().getValue(),
   };
 }
 

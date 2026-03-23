@@ -25,8 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { CheckIcon, XIcon, ColumnsIcon, SearchIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { MemberOption } from "@/components/karte-form";
 
 type Recorded<T> = { type: "recorded"; value: T } | { type: "notRecorded" };
 
@@ -125,13 +127,16 @@ function ConsentIcon({ consented }: { consented: boolean }) {
 
 export function KarteTable({
   kartes,
+  members = [],
   emptyMessage = "条件に一致するカルテデータが見つかりません",
   onRowClick,
 }: {
   kartes: KarteTableRow[];
+  members?: MemberOption[];
   emptyMessage?: string;
   onRowClick?: (karte: KarteTableRow, index: number) => void;
 }) {
+  const memberByName = new Map(members.map((m) => [m.name, m]));
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(
     () => new Set(COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key)),
   );
@@ -407,19 +412,29 @@ export function KarteTable({
                   {isVisible("client") && (
                     <TableCell className="text-sm">
                       {karte.client.type === "recorded" ? (
-                        <div>
-                          <div>{karte.client.value.name}</div>
-                          {karte.client.value.studentId && (
-                            <div className="text-xs text-muted-foreground font-mono">
-                              {karte.client.value.studentId}
+                        <HoverCard>
+                          <HoverCardTrigger>
+                            <span className="cursor-default">{karte.client.value.name}</span>
+                          </HoverCardTrigger>
+                          <HoverCardContent>
+                            <div className="flex flex-col gap-1.5">
+                              <p className="font-semibold">{karte.client.value.name}</p>
+                              <Badge variant="outline" className="w-fit text-xs">
+                                {karte.client.value.type}
+                              </Badge>
+                              {karte.client.value.studentId && (
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  {karte.client.value.studentId}
+                                </div>
+                              )}
+                              {karte.client.value.affiliation && (
+                                <div className="text-xs text-muted-foreground">
+                                  {karte.client.value.affiliation}
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {karte.client.value.affiliation && (
-                            <div className="text-xs text-muted-foreground">
-                              {karte.client.value.affiliation}
-                            </div>
-                          )}
-                        </div>
+                          </HoverCardContent>
+                        </HoverCard>
                       ) : (
                         <NotRecorded />
                       )}
@@ -472,7 +487,51 @@ export function KarteTable({
                   {isVisible("assignee") && (
                     <TableCell className="text-sm">
                       {karte.assignedMemberNames.length > 0 ? (
-                        karte.assignedMemberNames.join(", ")
+                        <div className="flex flex-wrap gap-1">
+                          {karte.assignedMemberNames.map((name) => {
+                            const member = memberByName.get(name);
+                            if (member) {
+                              return (
+                                <HoverCard key={name}>
+                                  <HoverCardTrigger>
+                                    <Badge variant="secondary" className="cursor-default text-xs">
+                                      {name}
+                                    </Badge>
+                                  </HoverCardTrigger>
+                                  <HoverCardContent>
+                                    <div className="flex flex-col gap-1.5">
+                                      <p className="font-semibold">{member.name}</p>
+                                      {member.studentId && (
+                                        <div className="text-xs text-muted-foreground font-mono">
+                                          {member.studentId}
+                                        </div>
+                                      )}
+                                      {member.department && (
+                                        <div className="text-xs text-muted-foreground">
+                                          {member.department}
+                                        </div>
+                                      )}
+                                      {member.email && (
+                                        <div className="text-xs text-muted-foreground">
+                                          {member.email}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </HoverCardContent>
+                                </HoverCard>
+                              );
+                            }
+                            return (
+                              <Badge
+                                key={name}
+                                variant="outline"
+                                className="text-xs text-muted-foreground"
+                              >
+                                {name}
+                              </Badge>
+                            );
+                          })}
+                        </div>
                       ) : (
                         <NotRecorded />
                       )}
