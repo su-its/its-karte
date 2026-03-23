@@ -101,6 +101,23 @@ export default function ImportPage() {
   );
   const validCount = tableRows.length - errorIndices.size;
 
+  /** ユニークな未解決担当者名 → 出現行数 */
+  const unresolvedAssignees = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const names = row.assignee
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      for (const name of names) {
+        if (!memberMapping.has(name)) {
+          counts.set(name, (counts.get(name) ?? 0) + 1);
+        }
+      }
+    }
+    return counts;
+  }, [rows, memberMapping]);
+
   const duplicateMap = useMemo(() => {
     const map = new Map<number, ReturnType<typeof findDuplicateMatches>>();
     for (let i = 0; i < rows.length; i++) {
@@ -155,7 +172,7 @@ export default function ImportPage() {
       // Capture initial errors before user edits
       const initErrors = new Set<number>();
       for (let i = 0; i < parsed.length; i++) {
-        if (validateRow(parsed[i], i, mapping)) initErrors.add(i);
+        if (validateRow(parsed[i])) initErrors.add(i);
       }
       setInitialErrorIndices(initErrors);
       setStep("validation");
@@ -173,7 +190,7 @@ export default function ImportPage() {
   >(undefined);
 
   function openRowEditor(index: number) {
-    const errorFields = getErrorFields(rows[index], memberMapping);
+    const errorFields = getErrorFields(rows[index]);
     setEditingRowIndex(index);
     setFrozenEditableFields(errorFields);
     setOriginalFormValues(csvRowToFormValues(rows[index], memberMapping));
@@ -207,6 +224,14 @@ export default function ImportPage() {
     if (prev !== undefined) {
       openRowEditor(prev);
     }
+  }
+
+  function resolveAssignee(unresolvedName: string, memberId: string) {
+    setMemberMapping((prev) => {
+      const next = new Map(prev);
+      next.set(unresolvedName, memberId);
+      return next;
+    });
   }
 
   function proceedFromValidation() {
@@ -410,6 +435,52 @@ export default function ImportPage() {
             </div>
           )}
 
+          {/* Unresolved assignee mapping */}
+          {errorIndices.size === 0 && unresolvedAssignees.size > 0 && (
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <AlertCircleIcon className="size-5 text-yellow-600 shrink-0" />
+                <div>
+                  <p className="font-semibold">
+                    {unresolvedAssignees.size}名の担当者がメンバーに紐づいていません
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    メンバーを選択して紐づけるか、そのままインポートできます。
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {[...unresolvedAssignees.entries()].map(([name, count]) => (
+                  <div
+                    key={name}
+                    className="flex items-center gap-3 rounded-md border bg-background p-3"
+                  >
+                    <Badge variant="outline" className="text-muted-foreground shrink-0">
+                      {name}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground shrink-0">({count}件)</span>
+                    <div className="flex-1">
+                      <select
+                        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value) resolveAssignee(name, e.target.value);
+                        }}
+                      >
+                        <option value="">未解決のまま</option>
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}（{m.studentId}）
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           <KarteTable kartes={tableRows} onRowClick={(_, index) => openRowEditor(index)} />
         </div>
@@ -495,21 +566,21 @@ export default function ImportPage() {
                         k.consultedAt.type === "recorded"
                           ? new Date(k.consultedAt.value).toLocaleDateString("ja-JP")
                           : "";
+                      const troubleDetails =
+                        k.consultation.troubleDetails.type === "recorded"
+                          ? k.consultation.troubleDetails.value
+                          : "";
+                      const content =
+                        k.supportRecord.content.type === "recorded"
+                          ? k.supportRecord.content.value
+                          : "";
                       return (
                         <TableRow key={k.id} className="bg-muted/30 border-b-0">
                           <TableCell className="text-xs text-muted-foreground">既存</TableCell>
                           <DupCell value={date} highlight={mf.has("nameDate")} />
                           <DupCell value={clientName} highlight={mf.has("nameDate")} />
-                          <DupCell
-                            value={k.consultation.troubleDetails}
-                            highlight={mf.has("trouble")}
-                            truncate
-                          />
-                          <DupCell
-                            value={k.supportRecord.content}
-                            highlight={mf.has("support")}
-                            truncate
-                          />
+                          <DupCell value={troubleDetails} highlight={mf.has("trouble")} truncate />
+                          <DupCell value={content} highlight={mf.has("support")} truncate />
                           <TableCell className="text-sm">
                             {k.assignedMemberNames.join(", ")}
                           </TableCell>
@@ -639,6 +710,7 @@ export default function ImportPage() {
                 </div>
               )}
               <KarteForm
+                key={editingRowIndex}
                 members={formMembers}
                 categories={formCategories}
                 initialValues={csvRowToFormValues(editingRow, memberMapping)}

@@ -249,10 +249,10 @@ function serializeKarte(karte: Karte) {
       categories: serializeRecorded(karte.consultation.categories, (cats) =>
         cats.map((c) => ({ id: c.id, displayName: c.displayName })),
       ),
-      troubleDetails: karte.consultation.troubleDetails,
+      troubleDetails: serializeRecorded(karte.consultation.troubleDetails, (v: string) => v),
     },
     supportRecord: {
-      content: karte.supportRecord.content,
+      content: serializeRecorded(karte.supportRecord.content, (v: string) => v),
       resolution: serializeResolution(karte.supportRecord.resolution),
       workDuration: serializeRecorded(karte.supportRecord.workDuration, (v) => v as number),
     },

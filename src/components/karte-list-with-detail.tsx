@@ -55,13 +55,17 @@ function toFormValues(row: KarteTableRow, members: MemberOption[]): Partial<Kart
     ),
     targetDevice:
       row.consultation.targetDevice.type === "recorded" ? row.consultation.targetDevice.value : "",
-    troubleDetails: row.consultation.troubleDetails,
+    troubleDetails:
+      row.consultation.troubleDetails.type === "recorded"
+        ? row.consultation.troubleDetails.value
+        : "",
     assignedMemberIds: new Set(
       row.assignedMemberNames
         .map((name) => members.find((m) => m.name === name)?.id)
         .filter((id): id is string => id !== undefined),
     ),
-    supportContent: row.supportRecord.content,
+    supportContent:
+      row.supportRecord.content.type === "recorded" ? row.supportRecord.content.value : "",
     resolutionType: resType as "resolved" | "unresolved",
     followUp,
     workDurationMinutes:

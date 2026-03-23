@@ -150,11 +150,11 @@ export async function importKartes(rows: ImportRow[]): Promise<ImportResult> {
               ? recorded(categories as unknown as NonEmptyArray<ConsultationCategory>)
               : notRecorded(),
           targetDevice: recorded(row.targetDevice),
-          troubleDetails: row.troubleDetails,
+          troubleDetails: row.troubleDetails ? recorded(row.troubleDetails) : notRecorded(),
         },
         supportRecord: {
           assignees: toAssignees(row),
-          content: row.supportContent,
+          content: row.supportContent ? recorded(row.supportContent) : notRecorded(),
           resolution: toRecordedResolution(row.resolution, row.followUp),
           workDuration:
             row.workDurationMinutes !== null

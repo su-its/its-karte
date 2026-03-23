@@ -55,11 +55,11 @@ export type KarteTableRow = {
   consultation: {
     targetDevice: Recorded<string>;
     categories: Recorded<readonly { id: string; displayName: string }[]>;
-    troubleDetails: string;
+    troubleDetails: Recorded<string>;
   };
   assignedMemberNames: string[];
   supportRecord: {
-    content: string;
+    content: Recorded<string>;
     resolution: Recorded<{ type: "resolved" } | { type: "unresolved"; followUp?: string }>;
     workDuration: Recorded<number>;
   };
@@ -200,8 +200,10 @@ export function KarteTable({
       const texts = [
         karte.client.type === "recorded" ? karte.client.value.name : "",
         karte.client.type === "recorded" ? (karte.client.value.studentId ?? "") : "",
-        karte.consultation.troubleDetails,
-        karte.supportRecord.content,
+        karte.consultation.troubleDetails.type === "recorded"
+          ? karte.consultation.troubleDetails.value
+          : "",
+        karte.supportRecord.content.type === "recorded" ? karte.supportRecord.content.value : "",
         ...karte.assignedMemberNames,
         karte.consultation.targetDevice.type === "recorded"
           ? karte.consultation.targetDevice.value
@@ -476,12 +478,20 @@ export function KarteTable({
                   )}
                   {isVisible("troubleDetails") && (
                     <TableCell className="text-sm max-w-48">
-                      <div className="truncate">{karte.consultation.troubleDetails}</div>
+                      {karte.consultation.troubleDetails.type === "recorded" ? (
+                        <div className="truncate">{karte.consultation.troubleDetails.value}</div>
+                      ) : (
+                        <NotRecorded />
+                      )}
                     </TableCell>
                   )}
                   {isVisible("supportContent") && (
                     <TableCell className="text-sm max-w-48">
-                      <div className="truncate">{karte.supportRecord.content}</div>
+                      {karte.supportRecord.content.type === "recorded" ? (
+                        <div className="truncate">{karte.supportRecord.content.value}</div>
+                      ) : (
+                        <NotRecorded />
+                      )}
                     </TableCell>
                   )}
                   {isVisible("assignee") && (
@@ -543,10 +553,10 @@ export function KarteTable({
                         karte.supportRecord.resolution.value.type === "resolved" ? (
                           <Badge variant="secondary">解決</Badge>
                         ) : (
-                          <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
                             <Badge variant="destructive">未解決</Badge>
                             {karte.supportRecord.resolution.value.followUp && (
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
                                 → {karte.supportRecord.resolution.value.followUp}
                               </span>
                             )}

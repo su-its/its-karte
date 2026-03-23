@@ -109,7 +109,10 @@ export function fingerprintsFromCsvRow(row: CsvRow): Fingerprints {
 export function fingerprintsFromKarte(k: ExistingKarte): Fingerprints {
   const name = k.client.type === "recorded" ? k.client.value.name : "";
   const date = k.consultedAt.type === "recorded" ? k.consultedAt.value : k.recordedAt;
-  return buildFingerprints(name, date, k.consultation.troubleDetails, k.supportRecord.content);
+  const troubleDetails =
+    k.consultation.troubleDetails.type === "recorded" ? k.consultation.troubleDetails.value : "";
+  const content = k.supportRecord.content.type === "recorded" ? k.supportRecord.content.value : "";
+  return buildFingerprints(name, date, troubleDetails, content);
 }
 
 export function findDuplicateMatches(
@@ -160,11 +163,7 @@ export function findBatchDuplicates(rows: CsvRow[]): Set<number> {
 // Validation
 // ============================================================================
 
-export function validateRow(
-  row: CsvRow,
-  _index: number,
-  memberMapping: Map<string, string>,
-): string | undefined {
+export function validateRow(row: CsvRow): string | undefined {
   const errors: string[] = [];
 
   if (!row.timestamp) errors.push("タイムスタンプが空");
@@ -181,13 +180,6 @@ export function validateRow(
     }
   }
 
-  const assigneeIds = row.assignee
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const unmapped = assigneeIds.filter((id) => !memberMapping.has(id));
-  if (unmapped.length > 0) errors.push(`担当者未解決: ${unmapped.join(", ")}`);
-
   if (row.workDuration && Number.isNaN(Number(row.workDuration))) {
     errors.push(`作業時間が数値でない: ${row.workDuration}`);
   }
@@ -196,7 +188,7 @@ export function validateRow(
 }
 
 /** エラーのあるCsvRowフィールド名のセットを返す */
-export function getErrorFields(row: CsvRow, memberMapping: Map<string, string>): Set<keyof CsvRow> {
+export function getErrorFields(row: CsvRow): Set<keyof CsvRow> {
   const fields = new Set<keyof CsvRow>();
 
   if (!row.timestamp) fields.add("timestamp");
@@ -213,14 +205,6 @@ export function getErrorFields(row: CsvRow, memberMapping: Map<string, string>):
     if (!row.studentId || !/^[0-9]{8}$|^[0-9]{3}[A-Z][0-9]{4}$/.test(row.studentId)) {
       fields.add("studentId");
     }
-  }
-
-  const assigneeIds = row.assignee
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (assigneeIds.some((id) => !memberMapping.has(id))) {
-    fields.add("assignee");
   }
 
   if (row.workDuration && Number.isNaN(Number(row.workDuration))) {
@@ -290,11 +274,15 @@ export function csvRowToTableRow(
         : { type: "notRecorded" },
       categories:
         categories.length > 0 ? { type: "recorded", value: categories } : { type: "notRecorded" },
-      troubleDetails: row.troubleDetails,
+      troubleDetails: row.troubleDetails
+        ? { type: "recorded", value: row.troubleDetails }
+        : { type: "notRecorded" },
     },
     assignedMemberNames: assigneeNames,
     supportRecord: {
-      content: row.supportContent,
+      content: row.supportContent
+        ? { type: "recorded", value: row.supportContent }
+        : { type: "notRecorded" },
       resolution: row.resolution
         ? {
             type: "recorded",
@@ -308,7 +296,7 @@ export function csvRowToTableRow(
         ? { type: "recorded", value: Number(row.workDuration) }
         : { type: "notRecorded" },
     },
-    error: validateRow(row, index, memberMapping),
+    error: validateRow(row),
   };
 }
 
@@ -345,6 +333,12 @@ export function buildComparisonFields(
     karte.supportRecord.workDuration.type === "recorded"
       ? `${karte.supportRecord.workDuration.value}分`
       : "";
+  const dbTroubleDetails =
+    karte.consultation.troubleDetails.type === "recorded"
+      ? karte.consultation.troubleDetails.value
+      : "";
+  const dbContent =
+    karte.supportRecord.content.type === "recorded" ? karte.supportRecord.content.value : "";
 
   return [
     {
@@ -371,13 +365,13 @@ export function buildComparisonFields(
     {
       label: "トラブル詳細",
       csvValue: csvRow.troubleDetails,
-      dbValue: karte.consultation.troubleDetails,
+      dbValue: dbTroubleDetails,
       isMatchKey: isMatch("trouble"),
     },
     {
       label: "対応内容",
       csvValue: csvRow.supportContent,
-      dbValue: karte.supportRecord.content,
+      dbValue: dbContent,
       isMatchKey: isMatch("support"),
     },
     {
