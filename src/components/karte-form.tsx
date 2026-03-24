@@ -17,7 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { getFaculties, getDepartments, getMaxYear } from "@shizuoka-its/core";
+import {
+  getFaculties,
+  getDepartments,
+  getMaxYear,
+  UNIVERSITY_STRUCTURE,
+  clientTypeNames,
+  FOLLOW_UP_OPTIONS,
+} from "@shizuoka-its/core";
 import { LoaderIcon, SaveIcon } from "lucide-react";
 
 // ============================================================================
@@ -77,21 +84,14 @@ type KarteFormProps = {
   onMarkNotRecorded?: (field: keyof KarteFormValues) => void;
 };
 
-const CLIENT_TYPES = [
-  { value: "student", label: "学生" },
-  { value: "teacher", label: "教員" },
-  { value: "staff", label: "職員" },
-  { value: "other", label: "その他" },
-] as const;
+const CLIENT_TYPES = (
+  Object.entries(clientTypeNames) as [keyof typeof clientTypeNames, string][]
+).map(([value, label]) => ({ value, label }));
 
-const COURSE_TYPES = [
-  { value: "undergraduate", label: "学部" },
-  { value: "master", label: "修士" },
-  { value: "doctoral", label: "博士" },
-  { value: "professional", label: "専門職" },
-] as const;
-
-const FOLLOW_UPS = ["技術部", "生協", "情報基盤センター", "見送り", "その他"];
+const COURSE_TYPES = Object.entries(UNIVERSITY_STRUCTURE).map(([value, { label }]) => ({
+  value,
+  label,
+}));
 
 const PRECISION_OPTIONS: { value: ConsultedAtPrecision; label: string }[] = [
   { value: "datetime", label: "日時" },
@@ -653,7 +653,7 @@ export function KarteForm({
                     <SelectValue placeholder="選択してください" />
                   </SelectTrigger>
                   <SelectContent>
-                    {FOLLOW_UPS.map((fu) => (
+                    {FOLLOW_UP_OPTIONS.map((fu) => (
                       <SelectItem key={fu} value={fu}>
                         {fu}
                       </SelectItem>

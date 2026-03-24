@@ -92,17 +92,17 @@ function toRecordedClient(params: ImportRow["client"]): Recorded<Client> {
         : undefined;
       return affiliation
         ? recorded({
-            type: "student",
+            type: "student" as const,
             studentId: StudentId.fromString(params.studentId),
             name: params.name,
             affiliation,
-          })
+          } as unknown as Client)
         : recorded({
-            type: "student",
+            type: "student" as const,
             studentId: StudentId.fromString(params.studentId),
             name: params.name,
             affiliation: { type: "undergraduate", value: {} } as unknown as PartialAffiliation,
-          });
+          } as unknown as Client);
     }
 
     const affiliation =
@@ -131,7 +131,7 @@ function toRecordedClient(params: ImportRow["client"]): Recorded<Client> {
       studentId: StudentId.fromString(params.studentId),
       name: params.name,
       affiliation,
-    });
+    } as unknown as Client);
   } catch {
     return notRecorded();
   }
