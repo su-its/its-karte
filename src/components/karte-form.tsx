@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { getFaculties, getDepartments, getMaxYear } from "@/lib/universityStructure";
+import { getFaculties, getDepartments, getMaxYear } from "@shizuoka-its/core";
 import { LoaderIcon, SaveIcon } from "lucide-react";
 
 // ============================================================================

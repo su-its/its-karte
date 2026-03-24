@@ -2,7 +2,8 @@ import type { CsvRow } from "@/lib/parseCsv";
 import type { KarteTableRow, SerializedConsultedAt } from "@/components/karte-table";
 import type { ConsultedAtPrecision, KarteFormValues } from "@/components/karte-form";
 import type { ComparisonRow } from "@/components/duplicate-comparison";
-import { CONSULTATION_CATEGORIES, type ConsultationCategoryId } from "@shizuoka-its/core";
+import { StudentId } from "@shizuoka-its/core";
+import { parseCategoryTags } from "@/lib/tagMapping";
 import type { listKartesWithMembers } from "@/actions/karte";
 
 /**
@@ -69,30 +70,6 @@ type Fingerprints = {
 // Constants & Helpers
 // ============================================================================
 
-const TAG_MAPPING: Record<string, ConsultationCategoryId> = {
-  wifi_eduroam: "wifi_eduroam",
-  wifi_succes: "wifi_success",
-  wifi_success: "wifi_success",
-  wifi_smartphone: "wifi_smartphone",
-  usage_mac: "usage_mac",
-  usage_fs: "usage_fs",
-  usage_vpn: "usage_vpn",
-  usage_mail: "usage_mail",
-  usage_gakujo: "usage_gakujo",
-  usage_onedrive: "usage_onedrive",
-  usage_printer: "usage_printer",
-  usage_vm: "usage_vm",
-  usage_ms_software: "usage_ms_software",
-  hardware_pc: "hardware_pc",
-  problem_credential: "problem_credential",
-  problem_os: "problem_windows",
-  problem_windows: "problem_windows",
-  problem_linux: "problem_linux",
-  programming: "programming",
-  rent: "rent",
-  other: "other",
-};
-
 export function parseGradeType(grade: string): "student" | "staff" | "teacher" | "other" {
   if (grade === "職員") return "staff";
   if (grade === "教員") return "teacher";
@@ -104,18 +81,6 @@ export function formatCsvAffiliation(row: CsvRow): string {
   const m = row.grade.match(/^(学部|修士|博士)\s*(\d+)年$/);
   if (!m) return row.grade;
   return `${row.faculty} ${row.department} ${m[1] === "学部" ? "" : m[1]}${m[2]}年`.trim();
-}
-
-export function parseCategoryTags(tags: string) {
-  return tags
-    .split(", ")
-    .map((tag) => {
-      const mappedId = TAG_MAPPING[tag.split(" ")[0]];
-      if (!mappedId) return null;
-      const master = CONSULTATION_CATEGORIES.find((c) => c.id === mappedId);
-      return { id: mappedId, displayName: master?.displayName ?? mappedId };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
 }
 
 // ============================================================================
@@ -240,7 +205,7 @@ export function validateRow(
   const gradeType = parseGradeType(row.grade);
   if (gradeType === "student" && !skip.has("studentId")) {
     if (!row.studentId) errors.push("学籍番号が空");
-    else if (!/^[0-9]{8}$|^[0-9]{3}[A-Z][0-9]{4}$/.test(row.studentId)) {
+    else if (!StudentId.isValid(row.studentId)) {
       errors.push(`学籍番号が不正: ${row.studentId}`);
     }
   }

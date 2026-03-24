@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { parseCsv, type CsvRow } from "@/lib/parseCsv";
+import { parseCategoryTags } from "@/lib/tagMapping";
 import { listMembers, listKartesWithMembers, listCategories } from "@/actions/karte";
 import { importKartes, type ImportResult } from "@/actions/import";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,6 @@ import {
   type MemberInfo,
   type ExistingKarte,
   parseGradeType,
-  parseCategoryTags,
   fingerprintsFromKarte,
   findDuplicateMatches,
   csvRowToTableRow,
