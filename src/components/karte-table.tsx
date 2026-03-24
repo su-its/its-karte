@@ -441,7 +441,9 @@ export function KarteTable({
                       {karte.client.type === "recorded" ? (
                         <HoverCard>
                           <HoverCardTrigger>
-                            <span className="cursor-default">{karte.client.value.name}</span>
+                            <span className="cursor-default">
+                              {karte.client.value.name || karte.client.value.studentId || "—"}
+                            </span>
                           </HoverCardTrigger>
                           <HoverCardContent>
                             <div className="flex flex-col gap-1.5">
