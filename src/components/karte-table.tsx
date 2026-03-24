@@ -368,10 +368,10 @@ export function KarteTable({
               </>
             )}
             {isVisible("targetDevice") && (
-              <TableHead className="whitespace-nowrap">対象端末</TableHead>
+              <TableHead className="whitespace-nowrap max-w-32">対象端末</TableHead>
             )}
             {isVisible("categories") && (
-              <TableHead className="whitespace-nowrap">カテゴリ</TableHead>
+              <TableHead className="whitespace-nowrap max-w-48">カテゴリ</TableHead>
             )}
             {isVisible("troubleDetails") && (
               <TableHead className="whitespace-nowrap">トラブル詳細</TableHead>
@@ -478,7 +478,7 @@ export function KarteTable({
                     </>
                   )}
                   {isVisible("targetDevice") && (
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm max-w-32 truncate">
                       {karte.consultation.targetDevice.type === "recorded" ? (
                         karte.consultation.targetDevice.value
                       ) : (
@@ -487,9 +487,9 @@ export function KarteTable({
                     </TableCell>
                   )}
                   {isVisible("categories") && (
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm max-w-48">
                       {karte.consultation.categories.type === "recorded" ? (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 overflow-hidden max-h-16">
                           {karte.consultation.categories.value.map((cat) => (
                             <Badge key={cat.id} variant="outline" className="text-xs">
                               {cat.displayName}
