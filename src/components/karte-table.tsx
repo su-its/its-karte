@@ -489,7 +489,7 @@ export function KarteTable({
                   {isVisible("categories") && (
                     <TableCell className="text-sm max-w-48">
                       {karte.consultation.categories.type === "recorded" ? (
-                        <div className="flex flex-wrap gap-1 overflow-hidden max-h-16">
+                        <div className="flex gap-1 overflow-hidden">
                           {karte.consultation.categories.value.map((cat) => (
                             <Badge key={cat.id} variant="outline" className="text-xs">
                               {cat.displayName}
