@@ -992,15 +992,6 @@ function AffiliationFields({
         const stepIdx = steps.indexOf(step);
         if (stepIdx > 0 && !selections[steps[stepIdx - 1].field]) return null;
 
-        // auto-skipされた単一選択肢は選択済み表示
-        if (step.options.length === 1 && selections[step.field]) {
-          return (
-            <AffiliationStepRow key={step.field} label={step.label}>
-              <Badge variant="secondary">{step.options[0]}</Badge>
-            </AffiliationStepRow>
-          );
-        }
-
         return (
           <AffiliationStepRow key={step.field} label={step.label}>
             {step.options.map((opt) => (
