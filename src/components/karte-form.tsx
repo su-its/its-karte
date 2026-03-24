@@ -18,12 +18,12 @@ import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/h
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
-  getFaculties,
-  getDepartments,
   getMaxYear,
   UNIVERSITY_STRUCTURE,
   clientTypeNames,
   FOLLOW_UP_OPTIONS,
+  getAffiliationSteps,
+  type AffiliationStep,
 } from "@shizuoka-its/core";
 import { LoaderIcon, SaveIcon } from "lucide-react";
 
@@ -41,7 +41,12 @@ export type KarteFormValues = {
   studentId: string;
   courseType: "undergraduate" | "master" | "doctoral" | "professional";
   faculty: string;
+  enrollmentType: string;
+  program: string;
   department: string;
+  major: string;
+  course: string;
+  subspecialty: string;
   year: string;
   liabilityConsent: boolean;
   disclosureConsent: boolean;
@@ -185,7 +190,12 @@ const DEFAULTS: KarteFormValues = {
   studentId: "",
   courseType: "undergraduate",
   faculty: "",
+  enrollmentType: "",
+  program: "",
   department: "",
+  major: "",
+  course: "",
+  subspecialty: "",
   year: "",
   liabilityConsent: false,
   disclosureConsent: false,
@@ -840,6 +850,24 @@ function SearchableMultiSelect({
   );
 }
 
+/** 所属の全フィールドをクリアする */
+const AFFILIATION_FIELDS: (keyof KarteFormValues)[] = [
+  "faculty",
+  "enrollmentType",
+  "program",
+  "department",
+  "major",
+  "course",
+  "subspecialty",
+  "year",
+];
+
+function clearAffiliationFields(
+  set: <K extends keyof KarteFormValues>(key: K, value: KarteFormValues[K]) => void,
+) {
+  for (const f of AFFILIATION_FIELDS) set(f, "" as never);
+}
+
 function AffiliationFields({
   values,
   canEdit,
@@ -853,11 +881,16 @@ function AffiliationFields({
   editableFields?: Set<keyof KarteFormValues>;
   onMarkNotRecorded?: (field: keyof KarteFormValues) => void;
 }) {
-  const faculties = getFaculties(values.courseType);
-  const departments = getDepartments(values.courseType, values.faculty);
   const maxYear = getMaxYear(values.courseType);
-
   const editable = canEdit("courseType");
+
+  // 現在の選択状態からステップを計算
+  const selections: Record<string, string> = {};
+  for (const f of AFFILIATION_FIELDS) {
+    const v = values[f];
+    if (typeof v === "string" && v) selections[f] = v;
+  }
+  const steps = values.courseType ? getAffiliationSteps(values.courseType, selections) : [];
 
   const affiliationPill =
     onMarkNotRecorded && editableFields?.has("faculty") ? (
@@ -866,9 +899,7 @@ function AffiliationFields({
         className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         onClick={() => {
           set("courseType", "" as never);
-          set("faculty", "" as never);
-          set("department", "" as never);
-          set("year", "" as never);
+          clearAffiliationFields(set);
           onMarkNotRecorded("faculty");
         }}
       >
@@ -880,8 +911,7 @@ function AffiliationFields({
     const courseLabel = COURSE_TYPES.find((ct) => ct.value === values.courseType)?.label ?? "";
     const parts = [
       courseLabel,
-      values.faculty,
-      values.department,
+      ...steps.map((step) => selections[step.field]).filter(Boolean),
       values.year ? `${values.year}年` : "",
     ].filter(Boolean);
     return (
@@ -894,44 +924,41 @@ function AffiliationFields({
 
   function selectCourseType(ct: string) {
     set("courseType", ct as never);
-    const nextFaculties = getFaculties(ct);
-    if (nextFaculties.length === 1) {
-      selectFacultyWithCourse(ct, nextFaculties[0].name);
-    } else {
-      set("faculty", "" as never);
-      set("department", "" as never);
-      set("year", "" as never);
+    clearAffiliationFields(set);
+    // 最初のステップにauto-skip適用
+    const firstSteps = getAffiliationSteps(ct, {});
+    autoSkip(ct, {}, firstSteps);
+  }
+
+  function selectStep(step: AffiliationStep, value: string) {
+    set(step.field as keyof KarteFormValues, value as never);
+    // このステップ以降をクリア
+    const stepIdx = steps.findIndex((s) => s.field === step.field);
+    for (const s of steps.slice(stepIdx + 1)) {
+      set(s.field as keyof KarteFormValues, "" as never);
+    }
+    set("year", "" as never);
+    // 次のステップにauto-skip適用
+    const newSelections = { ...selections, [step.field]: value };
+    const newSteps = getAffiliationSteps(values.courseType, newSelections);
+    autoSkip(values.courseType, newSelections, newSteps);
+  }
+
+  function autoSkip(ct: string, sels: Record<string, string>, currentSteps: AffiliationStep[]) {
+    let s = sels;
+    for (const step of currentSteps) {
+      if (s[step.field]) continue; // 既に選択済み
+      if (step.options.length === 1) {
+        set(step.field as keyof KarteFormValues, step.options[0] as never);
+        s = { ...s, [step.field]: step.options[0] };
+      } else {
+        break;
+      }
     }
   }
 
-  function selectFacultyWithCourse(ct: string, f: string) {
-    set("faculty", f as never);
-    const nextDepts = getDepartments(ct, f);
-    if (nextDepts.length === 1) {
-      set("department", nextDepts[0] as never);
-    } else {
-      set("department", "" as never);
-    }
-    const maxY = getMaxYear(ct);
-    if (maxY === 1) {
-      set("year", "1" as never);
-    } else {
-      set("year", "" as never);
-    }
-  }
-
-  function selectFaculty(f: string) {
-    selectFacultyWithCourse(values.courseType, f);
-  }
-
-  function selectDepartment(d: string) {
-    set("department", d as never);
-    if (maxYear === 1) {
-      set("year", "1" as never);
-    } else {
-      set("year", "" as never);
-    }
-  }
+  // 全ステップが完了しているか（学年選択の表示判定）
+  const allStepsCompleted = steps.every((step) => !!selections[step.field]);
 
   return (
     <div className="mt-4 flex flex-col gap-3">
@@ -947,8 +974,9 @@ function AffiliationFields({
           {affiliationPill}
         </div>
       )}
+
       {/* 課程 */}
-      <AffiliationStep label="課程">
+      <AffiliationStepRow label="課程">
         {COURSE_TYPES.map((ct) => (
           <Button
             key={ct.value}
@@ -960,45 +988,36 @@ function AffiliationFields({
             {ct.label}
           </Button>
         ))}
-      </AffiliationStep>
+      </AffiliationStepRow>
 
-      {/* 学部・研究科 */}
-      {values.courseType && faculties.length > 0 && (
-        <AffiliationStep label="学部・研究科">
-          {faculties.map((f) => (
-            <Button
-              key={f.name}
-              type="button"
-              size="sm"
-              variant={values.faculty === f.name ? "default" : "outline"}
-              onClick={() => selectFaculty(f.name)}
-            >
-              {f.name}
-            </Button>
-          ))}
-        </AffiliationStep>
-      )}
+      {/* 動的ステップ */}
+      {steps.map((step) => {
+        // auto-skipされた単一選択肢はUIに表示しない
+        if (step.options.length === 1 && selections[step.field]) return null;
+        // まだ前のステップが未選択なら表示しない
+        const stepIdx = steps.indexOf(step);
+        if (stepIdx > 0 && !selections[steps[stepIdx - 1].field]) return null;
 
-      {/* 学科・専攻 */}
-      {values.faculty && departments.length > 0 && (
-        <AffiliationStep label="学科・専攻">
-          {departments.map((d) => (
-            <Button
-              key={d}
-              type="button"
-              size="sm"
-              variant={values.department === d ? "default" : "outline"}
-              onClick={() => selectDepartment(d)}
-            >
-              {d}
-            </Button>
-          ))}
-        </AffiliationStep>
-      )}
+        return (
+          <AffiliationStepRow key={step.field} label={step.label}>
+            {step.options.map((opt) => (
+              <Button
+                key={opt}
+                type="button"
+                size="sm"
+                variant={selections[step.field] === opt ? "default" : "outline"}
+                onClick={() => selectStep(step, opt)}
+              >
+                {opt}
+              </Button>
+            ))}
+          </AffiliationStepRow>
+        );
+      })}
 
       {/* 学年 */}
-      {values.faculty && (
-        <AffiliationStep label="学年">
+      {allStepsCompleted && (
+        <AffiliationStepRow label="学年">
           {Array.from({ length: maxYear }, (_, i) => (
             <Button
               key={i + 1}
@@ -1010,13 +1029,13 @@ function AffiliationFields({
               {i + 1}年
             </Button>
           ))}
-        </AffiliationStep>
+        </AffiliationStepRow>
       )}
     </div>
   );
 }
 
-function AffiliationStep({ label, children }: { label: string; children: React.ReactNode }) {
+function AffiliationStepRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <div className="text-xs font-medium text-muted-foreground mb-1.5">{label}</div>

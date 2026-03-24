@@ -274,7 +274,12 @@ export type KarteFormInput = {
   studentId: string;
   courseType: "undergraduate" | "master" | "doctoral" | "professional";
   faculty: string;
+  enrollmentType: string;
+  program: string;
   department: string;
+  major: string;
+  course: string;
+  subspecialty: string;
   year: number;
   liabilityConsent: boolean;
   disclosureConsent: boolean;
@@ -304,10 +309,28 @@ function buildConsultedAt(input: KarteFormInput): ConsultedAt {
 }
 
 function buildAffiliation(input: KarteFormInput): Affiliation {
+  const omitEmpty = (obj: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== "" && v !== undefined));
+
   const value =
     input.courseType === "undergraduate"
-      ? { faculty: input.faculty, department: input.department, year: input.year }
-      : { school: input.faculty, major: input.department, year: input.year };
+      ? omitEmpty({
+          faculty: input.faculty,
+          enrollmentType: input.enrollmentType,
+          program: input.program,
+          department: input.department,
+          course: input.course,
+          major: input.major,
+          subspecialty: input.subspecialty,
+          year: input.year,
+        })
+      : omitEmpty({
+          school: input.faculty,
+          major: input.major || input.department,
+          course: input.course,
+          year: input.year,
+        });
+
   return { type: input.courseType, value } as unknown as Affiliation;
 }
 
