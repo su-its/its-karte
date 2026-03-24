@@ -102,11 +102,8 @@ export default function ImportPage() {
     () => new Set(tableRows.filter((r) => r.error).map((r) => Number(r.id))),
     [tableRows],
   );
-  // ナビゲーション用: 初期エラー行リスト（修正しても消えない）
-  const navErrorList = useMemo(
-    () => [...initialErrorIndices].sort((a, b) => a - b),
-    [initialErrorIndices],
-  );
+  // ナビゲーション用: 現在エラーがある行のリスト（修正済みは除外）
+  const navErrorList = useMemo(() => [...errorIndices].sort((a, b) => a - b), [errorIndices]);
   const validCount = tableRows.length - errorIndices.size;
 
   /** ユニークな未解決担当者名 → 出現行数 */
@@ -154,28 +151,7 @@ export default function ImportPage() {
       setExistingKartes(kartes);
       setFormCategories(categories);
 
-      const mapping = new Map<string, string>();
-      const allAssigneeIds = new Set<string>();
-      for (const row of parsed) {
-        for (const id of row.assignee
-          .split(",")
-          .map((s: string) => s.trim())
-          .filter(Boolean)) {
-          allAssigneeIds.add(id);
-        }
-      }
-      for (const assigneeId of allAssigneeIds) {
-        // 学籍番号で一致
-        const byStudentId = memberList.find((m) => m.studentId === assigneeId);
-        if (byStudentId) {
-          mapping.set(assigneeId, byStudentId.id);
-          continue;
-        }
-        // 名前の部分一致で候補が1人に絞れたらマッチ
-        const nameMatches = memberList.filter((m) => m.name.includes(assigneeId));
-        if (nameMatches.length === 1) mapping.set(assigneeId, nameMatches[0].id);
-      }
-      setMemberMapping(mapping);
+      setMemberMapping(new Map());
 
       // Capture initial errors before user edits
       const initErrors = new Set<number>();
@@ -229,8 +205,7 @@ export default function ImportPage() {
 
   function goToNextError() {
     if (editingRowIndex === null) return;
-    const currentPos = navErrorList.indexOf(editingRowIndex);
-    const next = navErrorList[currentPos + 1];
+    const next = navErrorList.find((i) => i > editingRowIndex);
     if (next !== undefined) {
       openRowEditor(next);
     } else {
@@ -240,8 +215,7 @@ export default function ImportPage() {
 
   function goToPrevError() {
     if (editingRowIndex === null) return;
-    const currentPos = navErrorList.indexOf(editingRowIndex);
-    const prev = navErrorList[currentPos - 1];
+    const prev = [...navErrorList].reverse().find((i) => i < editingRowIndex);
     if (prev !== undefined) {
       openRowEditor(prev);
     }
@@ -926,7 +900,7 @@ function AssigneeMapper({
   members: MemberInfo[];
   onResolve: (memberId: string) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(unresolvedName);
   const [resolved, setResolved] = useState<MemberInfo | null>(null);
   const lowerQuery = query.toLowerCase();
   const filtered = lowerQuery

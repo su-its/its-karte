@@ -140,8 +140,7 @@ function parseConsultationTableRow(cols: string[], index: number): CsvRow {
   };
   const isNonStudent = facultyAbbr in NON_STUDENT_TYPES;
 
-  // 名前：学籍番号がなければフォールバック
-  const name = studentId || "";
+  const name = "";
 
   // 学部・学科マッピング
   const faculty = isNonStudent ? "" : FACULTY_MAPPING[facultyAbbr] || facultyAbbr;

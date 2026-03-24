@@ -2,7 +2,7 @@ import type { CsvRow } from "@/lib/parseCsv";
 import type { KarteTableRow, SerializedConsultedAt } from "@/components/karte-table";
 import type { ConsultedAtPrecision, KarteFormValues } from "@/components/karte-form";
 import type { ComparisonRow } from "@/components/duplicate-comparison";
-import type { ConsultationCategoryId } from "@shizuoka-its/core";
+import { CONSULTATION_CATEGORIES, type ConsultationCategoryId } from "@shizuoka-its/core";
 import type { listKartesWithMembers } from "@/actions/karte";
 
 /**
@@ -111,7 +111,9 @@ export function parseCategoryTags(tags: string) {
     .split(", ")
     .map((tag) => {
       const mappedId = TAG_MAPPING[tag.split(" ")[0]];
-      return mappedId ? { id: mappedId, displayName: tag } : null;
+      if (!mappedId) return null;
+      const master = CONSULTATION_CATEGORIES.find((c) => c.id === mappedId);
+      return { id: mappedId, displayName: master?.displayName ?? mappedId };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 }
@@ -534,7 +536,7 @@ export function csvRowToFormValues(
   const detectedDate = dateStr ? detectConsultedAt(dateStr) : null;
 
   return {
-    consultedAtPrecision: detectedDate?.precision ?? ("datetime" as ConsultedAtPrecision),
+    consultedAtPrecision: detectedDate?.precision ?? ("date" as ConsultedAtPrecision),
     consultedAt: detectedDate?.value ?? "",
     clientType: gradeType as KarteFormValues["clientType"],
     clientName: row.name,
@@ -550,7 +552,12 @@ export function csvRowToFormValues(
     troubleDetails: row.troubleDetails,
     assignedMemberIds: new Set(assigneeIds),
     supportContent: row.supportContent,
-    resolutionType: row.resolution === "解決" ? "resolved" : "unresolved",
+    resolutionType:
+      row.resolution === "解決"
+        ? "resolved"
+        : row.resolution === "未解決"
+          ? "unresolved"
+          : "resolved",
     followUp: row.followUp,
     workDurationMinutes: row.workDuration || "",
   };
@@ -571,12 +578,7 @@ export function formValuesToCsvRow(
     ? `${courseLabels[formValues.courseType] ?? "学部"}${formValues.year}年`
     : originalRow.grade;
 
-  const assigneeNames = [...formValues.assignedMemberIds]
-    .map((mid) => {
-      const member = members.find((m) => m.id === mid);
-      return member?.studentId ?? member?.name ?? mid;
-    })
-    .join(", ");
+  const assigneeNames = originalRow.assignee;
 
   return {
     ...originalRow,

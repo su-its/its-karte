@@ -1,4 +1,9 @@
-import type { MemberId, ConsultationCategory, ConsultationCategoryId } from "@shizuoka-its/core";
+import {
+  CONSULTATION_CATEGORIES,
+  type MemberId,
+  type ConsultationCategory,
+  type ConsultationCategoryId,
+} from "@shizuoka-its/core";
 import type { CsvRow } from "./parseCsv.js";
 
 /** メンバーの学籍番号→MemberId対応 */
@@ -85,7 +90,8 @@ function parseCategoryTags(tags: string): ConsultationCategory[] {
     if (!mappedId) {
       throw new Error(`未知のカテゴリタグ: ${id}`);
     }
-    return { id: mappedId, displayName: tag };
+    const master = CONSULTATION_CATEGORIES.find((c) => c.id === mappedId);
+    return { id: mappedId, displayName: master?.displayName ?? mappedId };
   });
 }
 

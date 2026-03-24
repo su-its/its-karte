@@ -80,7 +80,30 @@ function toRecordedClient(params: ImportRow["client"]): Recorded<Client> {
   try {
     const gradeMatch = params.grade.match(/^(学部|修士)\s*(\d+)年$/);
     const year = gradeMatch ? Number(gradeMatch[2]) : undefined;
-    const course = gradeMatch?.[1] ?? "学部";
+    const course = gradeMatch?.[1];
+
+    if (!course) {
+      // 課程不明 — 学部/学科情報があれば学部生として部分所属
+      const affiliation = params.faculty
+        ? ({
+            type: "undergraduate",
+            value: { faculty: params.faculty, department: params.department },
+          } as unknown as PartialAffiliation)
+        : undefined;
+      return affiliation
+        ? recorded({
+            type: "student",
+            studentId: StudentId.fromString(params.studentId),
+            name: params.name,
+            affiliation,
+          })
+        : recorded({
+            type: "student",
+            studentId: StudentId.fromString(params.studentId),
+            name: params.name,
+            affiliation: { type: "undergraduate", value: {} } as unknown as PartialAffiliation,
+          });
+    }
 
     const affiliation =
       course === "修士"
