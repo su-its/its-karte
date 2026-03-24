@@ -926,8 +926,7 @@ function AffiliationFields({
     set("courseType", ct as never);
     clearAffiliationFields(set);
     // 最初のステップにauto-skip適用
-    const firstSteps = getAffiliationSteps(ct, {});
-    autoSkip(ct, {}, firstSteps);
+    autoSkip(ct, {});
   }
 
   function selectStep(step: AffiliationStep, value: string) {
@@ -940,20 +939,17 @@ function AffiliationFields({
     set("year", "" as never);
     // 次のステップにauto-skip適用
     const newSelections = { ...selections, [step.field]: value };
-    const newSteps = getAffiliationSteps(values.courseType, newSelections);
-    autoSkip(values.courseType, newSelections, newSteps);
+    autoSkip(values.courseType, newSelections);
   }
 
-  function autoSkip(ct: string, sels: Record<string, string>, currentSteps: AffiliationStep[]) {
-    let s = sels;
-    for (const step of currentSteps) {
-      if (s[step.field]) continue; // 既に選択済み
-      if (step.options.length === 1) {
-        set(step.field as keyof KarteFormValues, step.options[0] as never);
-        s = { ...s, [step.field]: step.options[0] };
-      } else {
-        break;
-      }
+  function autoSkip(ct: string, sels: Record<string, string>) {
+    let s = { ...sels };
+    for (;;) {
+      const currentSteps = getAffiliationSteps(ct, s);
+      const nextStep = currentSteps.find((step) => !s[step.field]);
+      if (!nextStep || nextStep.options.length !== 1) break;
+      set(nextStep.field as keyof KarteFormValues, nextStep.options[0] as never);
+      s[nextStep.field] = nextStep.options[0];
     }
   }
 
