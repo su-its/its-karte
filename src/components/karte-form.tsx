@@ -988,11 +988,18 @@ function AffiliationFields({
 
       {/* 動的ステップ */}
       {steps.map((step) => {
-        // auto-skipされた単一選択肢はUIに表示しない
-        if (step.options.length === 1 && selections[step.field]) return null;
         // まだ前のステップが未選択なら表示しない
         const stepIdx = steps.indexOf(step);
         if (stepIdx > 0 && !selections[steps[stepIdx - 1].field]) return null;
+
+        // auto-skipされた単一選択肢は選択済み表示
+        if (step.options.length === 1 && selections[step.field]) {
+          return (
+            <AffiliationStepRow key={step.field} label={step.label}>
+              <Badge variant="secondary">{step.options[0]}</Badge>
+            </AffiliationStepRow>
+          );
+        }
 
         return (
           <AffiliationStepRow key={step.field} label={step.label}>
