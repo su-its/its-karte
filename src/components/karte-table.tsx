@@ -208,10 +208,8 @@ export function KarteTable({
     }
     // Date range
     if (dateFrom || dateTo) {
-      const date =
-        karte.consultedAt.type === "recorded"
-          ? consultedAtToDateString(karte.consultedAt.value)
-          : karte.recordedAt.slice(0, 10);
+      if (karte.consultedAt.type !== "recorded") return false;
+      const date = consultedAtToDateString(karte.consultedAt.value);
       if (dateFrom && date < dateFrom) return false;
       if (dateTo && date > dateTo) return false;
     }
