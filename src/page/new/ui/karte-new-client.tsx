@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { KarteForm, type KarteFormValues } from "@/widgets/karte-form";
 import type { MemberOption } from "@/shared/api";
-import type { KarteFormInput } from "@/shared/api";
+import type { KarteFormInput } from "../api/create-karte.server";
 
 type Props = {
   members: MemberOption[];

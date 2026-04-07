@@ -5,7 +5,7 @@ import Link from "next/link";
 import { parseCsv, type CsvRow } from "@/page/import/model/parse-csv";
 import { parseCategoryTags } from "@/page/import/model/tag-mapping";
 import { listMembers, listKartesWithMembers, listCategories } from "@/shared/api";
-import { importKartes, type ImportResult } from "@/shared/api";
+import { importKartes, type ImportResult } from "@/page/import/api/import.server";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Badge } from "@/shared/ui/badge";

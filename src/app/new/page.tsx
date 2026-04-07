@@ -1,4 +1,5 @@
-import { listMembers, createKarte } from "@/shared/api";
+import { listMembers } from "@/shared/api";
+import { createKarte } from "@/page/new/api/create-karte.server";
 import { CONSULTATION_CATEGORIES } from "@shizuoka-its/core";
 import { NewKarteClient } from "@/page/new";
 
