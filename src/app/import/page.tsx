@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { parseCsv, type CsvRow } from "@/page/import/model/parse-csv";
 import { parseCategoryTags } from "@/page/import/model/tag-mapping";
@@ -9,8 +9,6 @@ import { importKartes, type ImportResult } from "@/page/import/api/import.server
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Badge } from "@/shared/ui/badge";
-import { Input } from "@/shared/ui/input";
-import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/shared/ui/hover-card";
 import { Alert, AlertTitle, AlertDescription } from "@/shared/ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/shared/ui/sheet";
 import { cn } from "@/shared/lib";
@@ -26,6 +24,9 @@ import {
   ArrowLeftIcon,
 } from "lucide-react";
 import { Stepper } from "@/page/import/ui/stepper";
+import { DropZone } from "@/page/import/ui/drop-zone";
+import { AssigneeMapper } from "@/page/import/ui/assignee-mapper";
+import { DupCell } from "@/page/import/ui/dup-cell";
 import { KarteForm, type KarteFormValues } from "@/widgets/karte-form";
 import type { CategoryOption, MemberOption } from "@/shared/api";
 import {
@@ -490,7 +491,7 @@ export default function ImportPage() {
                 const hasMore = matches.length > 2 && !expandedDuplicates.has(csvIndex);
 
                 return (
-                  <DuplicateRowGroup key={csvIndex}>
+                  <React.Fragment key={csvIndex}>
                     {/* CSV row */}
                     <TableRow
                       className={cn("border-b-0", isSkipped ? "opacity-50" : "bg-background")}
@@ -567,7 +568,7 @@ export default function ImportPage() {
                     <TableRow className="h-2 border-b">
                       <TableCell colSpan={7} className="p-0" />
                     </TableRow>
-                  </DuplicateRowGroup>
+                  </React.Fragment>
                 );
               })}
             </TableBody>
@@ -788,168 +789,5 @@ export default function ImportPage() {
         </SheetContent>
       </Sheet>
     </main>
-  );
-}
-
-function DuplicateRowGroup({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
-
-function DupCell({
-  value,
-  highlight,
-  truncate,
-}: {
-  value: string;
-  highlight?: boolean;
-  truncate?: boolean;
-}) {
-  return (
-    <TableCell
-      className={cn(
-        "text-sm",
-        highlight && "bg-yellow-100 dark:bg-yellow-900/30",
-        truncate && "max-w-48",
-      )}
-    >
-      {truncate ? (
-        <div className="truncate">{value}</div>
-      ) : (
-        value || <span className="text-muted-foreground">—</span>
-      )}
-    </TableCell>
-  );
-}
-
-function DropZone({ onFile }: { onFile: (file: File) => void }) {
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file?.name.endsWith(".csv")) onFile(file);
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(true);
-  }
-
-  return (
-    <div
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onDragLeave={() => setDragging(false)}
-      onClick={() => inputRef.current?.click()}
-      className={cn(
-        "flex flex-col items-center justify-center py-24 gap-4 cursor-pointer rounded-xl border-2 border-dashed transition-colors",
-        dragging
-          ? "border-primary bg-primary/5"
-          : "border-border hover:border-primary/50 hover:bg-muted/50",
-      )}
-    >
-      <UploadIcon className={cn("size-12", dragging ? "text-primary" : "text-muted-foreground")} />
-      <div className="text-center">
-        <h2 className="text-xl font-semibold mb-1">
-          {dragging ? "ここにドロップ" : "CSVファイルをドラッグ＆ドロップ"}
-        </h2>
-        <p className="text-muted-foreground">またはクリックしてファイルを選択</p>
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".csv"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFile(f);
-        }}
-      />
-    </div>
-  );
-}
-
-/** 未解決の担当者名→メンバー紐づけ（検索付き） */
-function AssigneeMapper({
-  unresolvedName,
-  count,
-  members,
-  onResolve,
-}: {
-  unresolvedName: string;
-  count: number;
-  members: MemberInfo[];
-  onResolve: (memberId: string) => void;
-}) {
-  const [query, setQuery] = useState(unresolvedName);
-  const [resolved, setResolved] = useState<MemberInfo | null>(null);
-  const lowerQuery = query.toLowerCase();
-  const filtered = lowerQuery
-    ? members.filter(
-        (m) =>
-          m.name.toLowerCase().includes(lowerQuery) ||
-          (m.studentId ?? "").toLowerCase().includes(lowerQuery),
-      )
-    : members;
-
-  if (resolved) {
-    return (
-      <div className="flex items-center gap-3 rounded-md border bg-background p-3">
-        <Badge variant="outline" className="text-muted-foreground shrink-0">
-          {unresolvedName}
-        </Badge>
-        <ArrowRightIcon className="size-4 text-muted-foreground shrink-0" />
-        <Badge variant="default">{resolved.name}</Badge>
-        <span className="text-xs text-muted-foreground">({count}件)</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="flex items-center gap-3 mb-2">
-        <Badge variant="outline" className="text-muted-foreground shrink-0">
-          {unresolvedName}
-        </Badge>
-        <span className="text-xs text-muted-foreground shrink-0">({count}件)</span>
-        <ArrowRightIcon className="size-4 text-muted-foreground shrink-0" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="名前・学籍番号で検索..."
-          className="h-8 text-sm"
-        />
-      </div>
-      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-        {filtered.map((m) => (
-          <HoverCard key={m.id}>
-            <HoverCardTrigger>
-              <Badge
-                variant="outline"
-                className="cursor-pointer select-none hover:bg-muted transition-colors"
-                onClick={() => {
-                  setResolved(m);
-                  onResolve(m.id);
-                }}
-              >
-                {m.name}
-              </Badge>
-            </HoverCardTrigger>
-            <HoverCardContent className="text-sm">
-              <div className="flex flex-col gap-1">
-                <div className="font-semibold">{m.name}</div>
-                {m.studentId && <div className="text-muted-foreground">{m.studentId}</div>}
-                {m.department && <div className="text-muted-foreground">{m.department}</div>}
-              </div>
-            </HoverCardContent>
-          </HoverCard>
-        ))}
-        {filtered.length === 0 && (
-          <span className="text-sm text-muted-foreground py-1">該当なし</span>
-        )}
-      </div>
-    </div>
   );
 }
