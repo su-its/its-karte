@@ -1,26 +1,25 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useReducer, useMemo } from "react";
 import Link from "next/link";
-import { parseCsv, type CsvRow } from "../model/parse-csv";
+import { parseCsv } from "../model/parse-csv";
 import { parseCategoryTags } from "../model/tag-mapping";
 import { listMembers, listKartesWithMembers, listCategories } from "@/shared/api";
-import { importKartes, type ImportResult } from "../api/import.server";
+import { importKartes } from "../api/import.server";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/shared/ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/shared/ui/sheet";
 import { DuplicateComparison } from "./duplicate-comparison";
-import { CheckCircle2Icon, AlertCircleIcon, LoaderIcon, ArrowLeftIcon } from "lucide-react";
+import { CheckCircle2Icon, AlertCircleIcon, LoaderIcon } from "lucide-react";
 import { Stepper } from "./stepper";
 import { DropZone } from "@/shared/ui/drop-zone";
 import { ValidationStep } from "./validation-step";
 import { DuplicateStep } from "./duplicate-step";
-import { KarteForm, type KarteFormValues } from "@/widgets/karte-form";
-import type { CategoryOption, MemberOption } from "@/shared/api";
+import { ErrorNavFooter } from "./error-nav-footer";
+import { KarteForm } from "@/widgets/karte-form";
+import type { MemberOption } from "@/shared/api";
 import {
-  type MemberInfo,
-  type ExistingKarte,
   parseGradeType,
   fingerprintsFromKarte,
   findDuplicateMatches,
@@ -34,26 +33,31 @@ import {
   getErrorFields,
   validateRow,
 } from "../model/helpers";
-
-type Step = "upload" | "validation" | "duplicates" | "importing" | "done";
+import { importReducer, INITIAL_STATE } from "../model/import-state";
 
 export function KarteImportPage() {
-  const [step, setStep] = useState<Step>("upload");
-  const [rows, setRows] = useState<CsvRow[]>([]);
-  const [members, setMembers] = useState<MemberInfo[]>([]);
-  const [memberMapping, setMemberMapping] = useState<Map<string, string>>(new Map());
-  const [existingKartes, setExistingKartes] = useState<ExistingKarte[]>([]);
-  const [result, setResult] = useState<ImportResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
-  const [skippedIndices, setSkippedIndices] = useState<Set<number>>(new Set());
-  const [comparingIndex, setComparingIndex] = useState<number | null>(null);
-  const [expandedDuplicates, setExpandedDuplicates] = useState<Set<number>>(new Set());
-  const [initialErrorIndices, setInitialErrorIndices] = useState<Set<number>>(new Set());
-  /** 行index → ユーザーが「未記録として登録」を選んだフィールド */
-  const [notRecordedFieldsMap, setNotRecordedFieldsMap] = useState<Map<number, Set<keyof CsvRow>>>(
-    new Map(),
-  );
+  const [state, dispatch] = useReducer(importReducer, INITIAL_STATE);
+
+  const {
+    step,
+    rows,
+    members,
+    memberMapping,
+    existingKartes,
+    formCategories,
+    result,
+    error,
+    initialErrorIndices,
+    notRecordedFieldsMap,
+    editingRowIndex,
+    frozenEditableFields,
+    originalFormValues,
+    skippedIndices,
+    comparingIndex,
+    expandedDuplicates,
+  } = state;
+
+  // --- Derived values ---
 
   const karteFingerprints = useMemo(
     () => existingKartes.map(fingerprintsFromKarte),
@@ -75,11 +79,10 @@ export function KarteImportPage() {
     () => new Set(tableRows.filter((r) => r.error).map((r) => Number(r.id))),
     [tableRows],
   );
-  // ナビゲーション用: 現在エラーがある行のリスト（修正済みは除外）
+
   const navErrorList = useMemo(() => [...errorIndices].sort((a, b) => a - b), [errorIndices]);
   const validCount = tableRows.length - errorIndices.size;
 
-  /** ユニークな未解決担当者名 → 出現行数 */
   const unresolvedAssignees = useMemo(() => {
     const counts = new Map<string, number>();
     for (const row of rows) {
@@ -106,122 +109,103 @@ export function KarteImportPage() {
     return map;
   }, [rows, existingKartes, karteFingerprints, errorIndices]);
 
-  // ---- Handlers ----
+  const formMembers: MemberOption[] = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        studentId: m.studentId,
+        department: m.department,
+        email: m.email,
+      })),
+    [members],
+  );
+
+  const formEditableFields = useMemo(
+    () => csvErrorFieldsToEditableFields(frozenEditableFields),
+    [frozenEditableFields],
+  );
+
+  const editingRow = editingRowIndex !== null ? rows[editingRowIndex] : null;
+  const editingTableRow = editingRowIndex !== null ? tableRows[editingRowIndex] : null;
+  const comparingRow = comparingIndex !== null ? rows[comparingIndex] : null;
+  const comparingMatches = comparingIndex !== null ? (duplicateMap.get(comparingIndex) ?? []) : [];
+  const importableCount =
+    validCount - [...skippedIndices].filter((i) => !errorIndices.has(i)).length;
+  const stepIndex =
+    step === "upload" ? 0 : step === "validation" ? 1 : step === "duplicates" ? 2 : 3;
+
+  // --- Handlers ---
 
   async function processFile(file: File) {
     try {
       const text = await file.text();
       const parsed = parseCsv(text);
-      setRows(parsed);
-      setError(null);
 
       const [memberList, kartes, categories] = await Promise.all([
         listMembers(),
         listKartesWithMembers(),
         listCategories(),
       ]);
-      setMembers(memberList);
-      setExistingKartes(kartes);
-      setFormCategories(categories);
 
-      setMemberMapping(new Map());
-
-      // Capture initial errors before user edits
       const initErrors = new Set<number>();
       for (let i = 0; i < parsed.length; i++) {
         if (validateRow(parsed[i], undefined)) initErrors.add(i);
       }
-      setInitialErrorIndices(initErrors);
-      setStep("validation");
+
+      dispatch({
+        type: "FILE_LOADED",
+        rows: parsed,
+        members: memberList,
+        kartes,
+        categories,
+        initialErrors: initErrors,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "CSVの読み込みに失敗しました");
+      dispatch({
+        type: "FILE_ERROR",
+        error: err instanceof Error ? err.message : "CSVの読み込みに失敗しました",
+      });
     }
   }
 
-  function handleFileFromDrop(file: File) {
-    void processFile(file);
-  }
-
-  const [originalFormValues, setOriginalFormValues] = useState<
-    Partial<KarteFormValues> | undefined
-  >(undefined);
-
   function openRowEditor(index: number) {
     const nrFields = notRecordedFieldsMap.get(index);
-    const errorFields = getErrorFields(rows[index], nrFields);
-    setEditingRowIndex(index);
-    setFrozenEditableFields(errorFields);
-    setOriginalFormValues(csvRowToFormValues(rows[index], memberMapping));
-  }
-
-  function markFieldNotRecorded(rowIndex: number, field: keyof CsvRow) {
-    setNotRecordedFieldsMap((prev) => {
-      const next = new Map(prev);
-      const fields = new Set(next.get(rowIndex) ?? []);
-      fields.add(field);
-      next.set(rowIndex, fields);
-      return next;
+    dispatch({
+      type: "OPEN_EDITOR",
+      index,
+      errorFields: getErrorFields(rows[index], nrFields),
+      formValues: csvRowToFormValues(rows[index], memberMapping),
     });
-    // フィールドを空にする
-    setRows((prev) => prev.map((row, i) => (i === rowIndex ? { ...row, [field]: "" } : row)));
   }
 
   function closeRowEditor() {
-    setEditingRowIndex(null);
-    setFrozenEditableFields(new Set());
-    setOriginalFormValues(undefined);
-  }
-
-  function startErrorFlow() {
-    if (navErrorList.length > 0) openRowEditor(navErrorList[0]);
+    dispatch({ type: "CLOSE_EDITOR" });
   }
 
   function goToNextError() {
     if (editingRowIndex === null) return;
     const next = navErrorList.find((i) => i > editingRowIndex);
-    if (next !== undefined) {
-      openRowEditor(next);
-    } else {
-      closeRowEditor();
-    }
+    if (next !== undefined) openRowEditor(next);
+    else closeRowEditor();
   }
 
   function goToPrevError() {
     if (editingRowIndex === null) return;
     const prev = [...navErrorList].reverse().find((i) => i < editingRowIndex);
-    if (prev !== undefined) {
-      openRowEditor(prev);
-    }
-  }
-
-  function resolveAssignee(unresolvedName: string, memberId: string) {
-    setMemberMapping((prev) => {
-      const next = new Map(prev);
-      next.set(unresolvedName, memberId);
-      return next;
-    });
+    if (prev !== undefined) openRowEditor(prev);
   }
 
   function proceedFromValidation() {
     if (duplicateMap.size > 0) {
-      setSkippedIndices(new Set(duplicateMap.keys()));
-      setStep("duplicates");
+      dispatch({ type: "PROCEED_TO_DUPLICATES", skipIndices: new Set(duplicateMap.keys()) });
     } else {
       void handleImport(new Set());
     }
   }
 
-  function toggleSkip(index: number) {
-    setSkippedIndices((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  }
-
   async function handleImport(skipSet?: Set<number>) {
-    setStep("importing");
+    dispatch({ type: "START_IMPORT" });
     const toSkip = skipSet ?? skippedIndices;
     const validRows = rows.filter((_, i) => !errorIndices.has(i) && !toSkip.has(i));
     const importRows = validRows.map((row) => {
@@ -279,46 +263,15 @@ export function KarteImportPage() {
       };
     });
     const importResult = await importKartes(importRows as Parameters<typeof importKartes>[0]);
-    setResult(importResult);
-    setStep("done");
+    dispatch({ type: "IMPORT_DONE", result: importResult });
   }
 
-  const editingRow = editingRowIndex !== null ? rows[editingRowIndex] : null;
-  const editingTableRow = editingRowIndex !== null ? tableRows[editingRowIndex] : null;
-
-  const formMembers: MemberOption[] = useMemo(
-    () =>
-      members.map((m) => ({
-        id: m.id,
-        name: m.name,
-        studentId: m.studentId,
-        department: m.department,
-        email: m.email,
-      })),
-    [members],
-  );
-  const [formCategories, setFormCategories] = useState<CategoryOption[]>([]);
-
-  // シートを開いた時点のエラーフィールドを固定（編集中に消えないように）
-  const [frozenEditableFields, setFrozenEditableFields] = useState<Set<keyof CsvRow>>(new Set());
-  const formEditableFields = useMemo(
-    () => csvErrorFieldsToEditableFields(frozenEditableFields),
-    [frozenEditableFields],
-  );
-  const comparingRow = comparingIndex !== null ? rows[comparingIndex] : null;
-  const comparingMatches = comparingIndex !== null ? (duplicateMap.get(comparingIndex) ?? []) : [];
-  const importableCount =
-    validCount - [...skippedIndices].filter((i) => !errorIndices.has(i)).length;
-
-  const stepIndex =
-    step === "upload" ? 0 : step === "validation" ? 1 : step === "duplicates" ? 2 : 3;
+  // --- Render ---
 
   return (
     <main className="flex-1 px-8 py-8 w-full">
-      {/* Header + Stepper */}
       <div className="flex flex-col gap-6 mb-8">
         <h1 className="text-2xl font-bold">CSVインポート</h1>
-
         {step !== "done" && (
           <Stepper
             steps={[
@@ -340,10 +293,8 @@ export function KarteImportPage() {
         </Alert>
       )}
 
-      {/* Upload */}
-      {step === "upload" && <DropZone onFile={handleFileFromDrop} />}
+      {step === "upload" && <DropZone onFile={(file) => void processFile(file)} />}
 
-      {/* Validation */}
       {step === "validation" && (
         <ValidationStep
           tableRows={tableRows}
@@ -352,18 +303,19 @@ export function KarteImportPage() {
           hasDuplicates={duplicateMap.size > 0}
           unresolvedAssignees={unresolvedAssignees}
           members={members}
-          onStartErrorFlow={startErrorFlow}
+          onStartErrorFlow={() => navErrorList.length > 0 && openRowEditor(navErrorList[0])}
           onExportAndProceed={() => {
             exportErrorCsv(rows, errorIndices);
             proceedFromValidation();
           }}
           onProceed={proceedFromValidation}
           onRowClick={(_, index) => openRowEditor(index)}
-          onResolveAssignee={resolveAssignee}
+          onResolveAssignee={(name, memberId) =>
+            dispatch({ type: "RESOLVE_ASSIGNEE", name, memberId })
+          }
         />
       )}
 
-      {/* Duplicate Review */}
       {step === "duplicates" && (
         <DuplicateStep
           rows={rows}
@@ -371,14 +323,13 @@ export function KarteImportPage() {
           skippedIndices={skippedIndices}
           expandedDuplicates={expandedDuplicates}
           importableCount={importableCount}
-          onToggleSkip={toggleSkip}
-          onExpandDuplicates={(idx) => setExpandedDuplicates((prev) => new Set(prev).add(idx))}
-          onBack={() => setStep("validation")}
+          onToggleSkip={(idx) => dispatch({ type: "TOGGLE_SKIP", index: idx })}
+          onExpandDuplicates={(idx) => dispatch({ type: "EXPAND_DUPLICATES", index: idx })}
+          onBack={() => dispatch({ type: "BACK_TO_VALIDATION" })}
           onImport={() => handleImport()}
         />
       )}
 
-      {/* Importing */}
       {step === "importing" && (
         <div className="flex items-center justify-center gap-2 py-16">
           <LoaderIcon className="animate-spin" />
@@ -386,7 +337,6 @@ export function KarteImportPage() {
         </div>
       )}
 
-      {/* Done */}
       {step === "done" && result && (
         <div className="flex flex-col gap-4">
           <Alert>
@@ -433,34 +383,13 @@ export function KarteImportPage() {
           {editingRow && editingRowIndex !== null && (
             <div className="flex flex-col gap-4 mt-6">
               {frozenEditableFields.size > 0 && (
-                <div className="flex justify-between">
-                  <Button variant="ghost" size="sm" onClick={goToPrevError}>
-                    <ArrowLeftIcon data-icon="inline-start" /> 前のエラー
-                  </Button>
-                  {editingTableRow?.error ? (
-                    <Button variant="outline" size="sm" disabled>
-                      エラーを修正してください
-                    </Button>
-                  ) : errorIndices.size > 0 ? (
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={goToNextError}
-                    >
-                      <CheckCircle2Icon data-icon="inline-start" />
-                      次のエラーへ（残り{errorIndices.size}件）
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={closeRowEditor}
-                    >
-                      <CheckCircle2Icon data-icon="inline-start" />
-                      すべて解決しました
-                    </Button>
-                  )}
-                </div>
+                <ErrorNavFooter
+                  hasError={!!editingTableRow?.error}
+                  remainingErrors={errorIndices.size}
+                  onPrev={goToPrevError}
+                  onNext={goToNextError}
+                  onClose={closeRowEditor}
+                />
               )}
               <KarteForm
                 key={editingRowIndex}
@@ -472,43 +401,28 @@ export function KarteImportPage() {
                 onMarkNotRecorded={(formField) => {
                   if (editingRowIndex === null) return;
                   const csvField = formFieldToCsvField(formField);
-                  if (csvField) markFieldNotRecorded(editingRowIndex, csvField);
+                  if (csvField)
+                    dispatch({
+                      type: "MARK_NOT_RECORDED",
+                      rowIndex: editingRowIndex,
+                      field: csvField,
+                    });
                 }}
                 onFormChange={(formVals) => {
                   const updated = formValuesToCsvRow(formVals, editingRow, members);
-                  setRows((prev) => prev.map((r, i) => (i === editingRowIndex ? updated : r)));
+                  dispatch({ type: "UPDATE_ROW", index: editingRowIndex, row: updated });
                 }}
               />
 
-              {/* Action footer */}
               {frozenEditableFields.size > 0 && (
                 <div className="flex flex-col gap-2 pt-4">
-                  <div className="flex justify-between">
-                    <Button variant="ghost" size="sm" onClick={goToPrevError}>
-                      <ArrowLeftIcon data-icon="inline-start" /> 前のエラー
-                    </Button>
-                    {editingTableRow?.error ? (
-                      <Button variant="outline" disabled>
-                        エラーを修正してください
-                      </Button>
-                    ) : errorIndices.size > 0 ? (
-                      <Button
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={goToNextError}
-                      >
-                        <CheckCircle2Icon data-icon="inline-start" />
-                        次のエラーへ（残り{errorIndices.size}件）
-                      </Button>
-                    ) : (
-                      <Button
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={closeRowEditor}
-                      >
-                        <CheckCircle2Icon data-icon="inline-start" />
-                        すべて解決しました
-                      </Button>
-                    )}
-                  </div>
+                  <ErrorNavFooter
+                    hasError={!!editingTableRow?.error}
+                    remainingErrors={errorIndices.size}
+                    onPrev={goToPrevError}
+                    onNext={goToNextError}
+                    onClose={closeRowEditor}
+                  />
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -526,7 +440,10 @@ export function KarteImportPage() {
       </Sheet>
 
       {/* Sheet: Duplicate Comparison */}
-      <Sheet open={comparingIndex !== null} onOpenChange={() => setComparingIndex(null)}>
+      <Sheet
+        open={comparingIndex !== null}
+        onOpenChange={() => dispatch({ type: "SET_COMPARING", index: null })}
+      >
         <SheetContent className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle>
@@ -560,8 +477,8 @@ export function KarteImportPage() {
                   variant="outline"
                   onClick={() => {
                     if (comparingIndex !== null && !skippedIndices.has(comparingIndex))
-                      toggleSkip(comparingIndex);
-                    setComparingIndex(null);
+                      dispatch({ type: "TOGGLE_SKIP", index: comparingIndex });
+                    dispatch({ type: "SET_COMPARING", index: null });
                   }}
                 >
                   スキップする
@@ -569,8 +486,8 @@ export function KarteImportPage() {
                 <Button
                   onClick={() => {
                     if (comparingIndex !== null && skippedIndices.has(comparingIndex))
-                      toggleSkip(comparingIndex);
-                    setComparingIndex(null);
+                      dispatch({ type: "TOGGLE_SKIP", index: comparingIndex });
+                    dispatch({ type: "SET_COMPARING", index: null });
                   }}
                 >
                   インポートする

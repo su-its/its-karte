@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { Textarea } from "@/shared/ui/textarea";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Field, FieldLabel } from "@/shared/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
@@ -12,6 +10,7 @@ import { FOLLOW_UP_OPTIONS } from "@shizuoka-its/core";
 import { LoaderIcon, SaveIcon } from "lucide-react";
 import { formatConsultedAtDisplay } from "@/shared/lib";
 import { Section, AssigneeReadOnly, MemberHoverContent } from "./form-parts";
+import { FieldHeader, NotRecordedPill, FormField, FormTextarea } from "./form-field";
 
 import {
   type KarteFormValues,
@@ -53,6 +52,8 @@ export function KarteForm({
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
 
   const canEdit = (field: keyof KarteFormValues) => canEditField(field, readOnly, editableFields);
+  const fv = (field: keyof KarteFormValues) => getFieldValue(values, field);
+  const ofv = (field: keyof KarteFormValues) => getOriginalFieldValue(originalValues, field);
 
   // --- Side effects ---
 
@@ -77,17 +78,14 @@ export function KarteForm({
     return () => clearInterval(timer);
   }, [values.consultedAt]);
 
-  const onFormChangeRef = useRef(onFormChange);
-  onFormChangeRef.current = onFormChange;
   const isInitialMount = useRef(true);
-
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
-    onFormChangeRef.current?.(values);
-  }, [values]);
+    onFormChange?.(values);
+  }, [values, onFormChange]);
 
   // --- State updaters ---
 
@@ -118,133 +116,24 @@ export function KarteForm({
     }
   }
 
+  // --- Field props helper ---
+
+  function fieldProps(field: keyof KarteFormValues) {
+    return {
+      field,
+      value: fv(field),
+      isEditable: canEdit(field),
+      originalValue: ofv(field),
+      editableFields,
+      onMarkNotRecorded,
+      onChange: (v: string) => set(field, v as never),
+    };
+  }
+
   // --- Derived values ---
 
   const isStudent = values.clientType === "student";
   const hasSubmit = !readOnly && onSubmit;
-  const fv = (field: keyof KarteFormValues) => getFieldValue(values, field);
-  const ofv = (field: keyof KarteFormValues) => getOriginalFieldValue(originalValues, field);
-
-  // --- Sub-components (tightly coupled to form context) ---
-
-  function OriginalValueHint({ field }: { field: keyof KarteFormValues }) {
-    if (!editableFields?.has(field)) return null;
-    const orig = ofv(field);
-    if (orig === undefined) return null;
-    return (
-      <div className="text-xs text-muted-foreground mb-1">
-        修正前: <span className="font-mono">{orig || "（空）"}</span>
-      </div>
-    );
-  }
-
-  function NotRecordedPill({
-    field,
-    clearValue,
-  }: {
-    field: keyof KarteFormValues;
-    clearValue?: () => void;
-  }) {
-    if (!onMarkNotRecorded || !editableFields?.has(field)) return null;
-    return (
-      <button
-        type="button"
-        className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        onClick={() => {
-          clearValue ? clearValue() : set(field, "" as never);
-          onMarkNotRecorded(field);
-        }}
-      >
-        未記録にする
-      </button>
-    );
-  }
-
-  function FieldHeader({ field, label }: { field: keyof KarteFormValues; label: string }) {
-    return (
-      <div className="flex items-center gap-2" data-field={field}>
-        <FieldLabel
-          className={editableFields?.has(field) ? "text-destructive font-semibold" : undefined}
-        >
-          {label}
-        </FieldLabel>
-        <NotRecordedPill field={field} />
-      </div>
-    );
-  }
-
-  function renderField(
-    field: keyof KarteFormValues,
-    label: string,
-    opts?: { type?: string; placeholder?: string; required?: boolean; min?: number; max?: number },
-  ) {
-    const val = fv(field);
-    const isEditable = canEdit(field);
-    const orig = ofv(field);
-    const isModified = isEditable && orig !== undefined && orig !== val;
-    return (
-      <Field>
-        <FieldHeader field={field} label={label} />
-        <OriginalValueHint field={field} />
-        {isEditable ? (
-          <Input
-            type={opts?.type}
-            min={opts?.min}
-            max={opts?.max}
-            value={val}
-            onChange={(e) => set(field, e.target.value as never)}
-            placeholder={opts?.placeholder}
-            required={opts?.required}
-            className={
-              isModified
-                ? "border-green-500"
-                : editableFields?.has(field)
-                  ? "border-destructive"
-                  : undefined
-            }
-          />
-        ) : (
-          <div className="text-sm py-2.5 px-1 min-h-[2.25rem]">
-            {val || <span className="text-muted-foreground">—</span>}
-          </div>
-        )}
-      </Field>
-    );
-  }
-
-  function renderTextarea(field: keyof KarteFormValues, label: string, placeholder?: string) {
-    const val = fv(field);
-    const isEditable = canEdit(field);
-    const orig = ofv(field);
-    const isModified = isEditable && orig !== undefined && orig !== val;
-    return (
-      <Field>
-        <FieldHeader field={field} label={label} />
-        <OriginalValueHint field={field} />
-        {isEditable ? (
-          <Textarea
-            value={val}
-            onChange={(e) => set(field, e.target.value as never)}
-            placeholder={placeholder}
-            rows={4}
-            required
-            className={
-              isModified
-                ? "border-green-500"
-                : editableFields?.has(field)
-                  ? "border-destructive"
-                  : undefined
-            }
-          />
-        ) : (
-          <div className="text-sm py-2.5 px-1 whitespace-pre-wrap">
-            {val || <span className="text-muted-foreground">—</span>}
-          </div>
-        )}
-      </Field>
-    );
-  }
-
   const clientTypeLabel = CLIENT_TYPES.find((ct) => ct.value === values.clientType)?.label ?? "";
   const resolutionLabel = values.resolutionType === "resolved" ? "解決" : "未解決";
 
@@ -253,7 +142,13 @@ export function KarteForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-8">
       <Section title="相談日時">
-        <FieldHeader field="consultedAt" label="相談日時" />
+        <FieldHeader
+          field="consultedAt"
+          label="相談日時"
+          editableFields={editableFields}
+          onMarkNotRecorded={onMarkNotRecorded}
+          onClear={() => set("consultedAt", "")}
+        />
         {canEdit("consultedAt") ? (
           <div className="flex flex-col gap-3">
             <div className="flex gap-1.5">
@@ -289,7 +184,13 @@ export function KarteForm({
       </Section>
 
       <Section title="相談者情報">
-        <FieldHeader field="clientType" label="相談者タイプ" />
+        <FieldHeader
+          field="clientType"
+          label="相談者タイプ"
+          editableFields={editableFields}
+          onMarkNotRecorded={onMarkNotRecorded}
+          onClear={() => set("clientType", "student")}
+        />
         {canEdit("clientType") ? (
           <div className="flex gap-2 mb-4">
             {CLIENT_TYPES.map((ct) => (
@@ -311,9 +212,20 @@ export function KarteForm({
         )}
 
         <div className="grid grid-cols-2 gap-4">
-          {renderField("clientName", "氏名", { placeholder: "例: 山田太郎", required: true })}
-          {isStudent &&
-            renderField("studentId", "学籍番号", { placeholder: "例: 12345678", required: true })}
+          <FormField
+            {...fieldProps("clientName")}
+            label="氏名"
+            placeholder="例: 山田太郎"
+            required
+          />
+          {isStudent && (
+            <FormField
+              {...fieldProps("studentId")}
+              label="学籍番号"
+              placeholder="例: 12345678"
+              required
+            />
+          )}
         </div>
 
         {isStudent && (
@@ -339,7 +251,9 @@ export function KarteForm({
               <FieldLabel>免責事項に同意</FieldLabel>
               <NotRecordedPill
                 field="liabilityConsent"
-                clearValue={() => set("liabilityConsent", false)}
+                editableFields={editableFields}
+                onMarkNotRecorded={onMarkNotRecorded}
+                onClear={() => set("liabilityConsent", false)}
               />
             </div>
           </Field>
@@ -353,7 +267,9 @@ export function KarteForm({
               <FieldLabel>情報公開に同意</FieldLabel>
               <NotRecordedPill
                 field="disclosureConsent"
-                clearValue={() => set("disclosureConsent", false)}
+                editableFields={editableFields}
+                onMarkNotRecorded={onMarkNotRecorded}
+                onClear={() => set("disclosureConsent", false)}
               />
             </div>
           </Field>
@@ -361,7 +277,13 @@ export function KarteForm({
       </Section>
 
       <Section title="相談内容">
-        <FieldHeader field="categoryIds" label="カテゴリ" />
+        <FieldHeader
+          field="categoryIds"
+          label="カテゴリ"
+          editableFields={editableFields}
+          onMarkNotRecorded={onMarkNotRecorded}
+          onClear={() => set("categoryIds", new Set())}
+        />
         <SearchableMultiSelect
           label=""
           items={categories.map((c) => ({
@@ -375,18 +297,30 @@ export function KarteForm({
           readOnly={!canEdit("categoryIds")}
         />
         <div className="grid grid-cols-2 gap-4">
-          {renderField("targetDevice", "対象端末", {
-            placeholder: "例: ノートPC (Windows)",
-            required: true,
-          })}
+          <FormField
+            {...fieldProps("targetDevice")}
+            label="対象端末"
+            placeholder="例: ノートPC (Windows)"
+            required
+          />
         </div>
         <div className="mt-4">
-          {renderTextarea("troubleDetails", "トラブル詳細", "相談者が抱えている問題の詳細を記入")}
+          <FormTextarea
+            {...fieldProps("troubleDetails")}
+            label="トラブル詳細"
+            placeholder="相談者が抱えている問題の詳細を記入"
+          />
         </div>
       </Section>
 
       <Section title="対応記録">
-        <FieldHeader field="assignedMemberIds" label="担当者" />
+        <FieldHeader
+          field="assignedMemberIds"
+          label="担当者"
+          editableFields={editableFields}
+          onMarkNotRecorded={onMarkNotRecorded}
+          onClear={() => set("assignedMemberIds", new Set())}
+        />
         {!canEdit("assignedMemberIds") ? (
           <AssigneeReadOnly
             members={members}
@@ -408,11 +342,21 @@ export function KarteForm({
           />
         )}
 
-        {renderTextarea("supportContent", "対応内容", "実施した対応の詳細を記入")}
+        <FormTextarea
+          {...fieldProps("supportContent")}
+          label="対応内容"
+          placeholder="実施した対応の詳細を記入"
+        />
 
         <div className="grid grid-cols-3 gap-4 mt-4">
           <Field>
-            <FieldHeader field="resolutionType" label="解決ステータス" />
+            <FieldHeader
+              field="resolutionType"
+              label="解決ステータス"
+              editableFields={editableFields}
+              onMarkNotRecorded={onMarkNotRecorded}
+              onClear={() => set("resolutionType", "resolved")}
+            />
             {canEdit("resolutionType") ? (
               <div className="flex gap-2 mt-1">
                 <Button
@@ -443,7 +387,13 @@ export function KarteForm({
 
           {values.resolutionType === "unresolved" && (
             <Field>
-              <FieldHeader field="followUp" label="後処理" />
+              <FieldHeader
+                field="followUp"
+                label="後処理"
+                editableFields={editableFields}
+                onMarkNotRecorded={onMarkNotRecorded}
+                onClear={() => set("followUp", "")}
+              />
               {canEdit("followUp") ? (
                 <Select value={values.followUp} onValueChange={(v) => v && set("followUp", v)}>
                   <SelectTrigger>
@@ -463,12 +413,14 @@ export function KarteForm({
             </Field>
           )}
 
-          {renderField("workDurationMinutes", "作業時間（分）", {
-            type: "number",
-            min: 0,
-            placeholder: `経過 ${elapsedMinutes}分`,
-            required: true,
-          })}
+          <FormField
+            {...fieldProps("workDurationMinutes")}
+            label="作業時間（分）"
+            type="number"
+            min={0}
+            placeholder={`経過 ${elapsedMinutes}分`}
+            required
+          />
         </div>
       </Section>
 

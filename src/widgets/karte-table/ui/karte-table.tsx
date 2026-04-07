@@ -21,6 +21,7 @@ import { formatConsultedAtDisplay } from "@/shared/lib";
 import {
   type KarteTableRow,
   type ColumnKey,
+  type FilterState,
   COLUMNS,
   getDatePresets,
   filterKartes,
@@ -57,11 +58,17 @@ export function KarteTable({
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(
     () => new Set(COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key)),
   );
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [clientTypeFilter, setClientTypeFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [filters, setFilters] = useState<FilterState>({
+    search: "",
+    statusFilter: "all",
+    clientTypeFilter: "all",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  function setFilter<K extends keyof FilterState>(key: K, value: FilterState[K]) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
 
   function toggleColumn(key: ColumnKey) {
     setVisibleColumns((prev) => {
@@ -76,22 +83,22 @@ export function KarteTable({
   const visibleCount = visibleColumns.size;
 
   const hasActiveFilters =
-    search || statusFilter !== "all" || clientTypeFilter !== "all" || dateFrom || dateTo;
+    filters.search ||
+    filters.statusFilter !== "all" ||
+    filters.clientTypeFilter !== "all" ||
+    filters.dateFrom ||
+    filters.dateTo;
 
-  const filtered = filterKartes(kartes, {
-    search,
-    statusFilter,
-    clientTypeFilter,
-    dateFrom,
-    dateTo,
-  });
+  const filtered = filterKartes(kartes, filters);
 
   function clearFilters() {
-    setSearch("");
-    setStatusFilter("all");
-    setClientTypeFilter("all");
-    setDateFrom("");
-    setDateTo("");
+    setFilters({
+      search: "",
+      statusFilter: "all",
+      clientTypeFilter: "all",
+      dateFrom: "",
+      dateTo: "",
+    });
   }
 
   return (
@@ -101,13 +108,16 @@ export function KarteTable({
           <div className="relative flex-1 max-w-sm">
             <SearchIcon className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={filters.search}
+              onChange={(e) => setFilter("search", e.target.value)}
               placeholder="名前・学籍番号・内容で検索..."
               className="pl-9"
             />
           </div>
-          <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+          <Select
+            value={filters.statusFilter}
+            onValueChange={(v) => v && setFilter("statusFilter", v)}
+          >
             <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
@@ -118,7 +128,10 @@ export function KarteTable({
               <SelectItem value="notRecorded">未記録</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={clientTypeFilter} onValueChange={(v) => v && setClientTypeFilter(v)}>
+          <Select
+            value={filters.clientTypeFilter}
+            onValueChange={(v) => v && setFilter("clientTypeFilter", v)}
+          >
             <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
@@ -134,15 +147,15 @@ export function KarteTable({
             {DATE_PRESETS.map((p) => (
               <Button
                 key={p.label}
-                variant={dateFrom === p.from && dateTo === p.to ? "secondary" : "ghost"}
+                variant={
+                  filters.dateFrom === p.from && filters.dateTo === p.to ? "secondary" : "ghost"
+                }
                 size="sm"
                 onClick={() => {
-                  if (dateFrom === p.from && dateTo === p.to) {
-                    setDateFrom("");
-                    setDateTo("");
+                  if (filters.dateFrom === p.from && filters.dateTo === p.to) {
+                    setFilters((prev) => ({ ...prev, dateFrom: "", dateTo: "" }));
                   } else {
-                    setDateFrom(p.from);
-                    setDateTo(p.to);
+                    setFilters((prev) => ({ ...prev, dateFrom: p.from, dateTo: p.to }));
                   }
                 }}
               >
@@ -152,15 +165,15 @@ export function KarteTable({
             <span className="text-muted-foreground text-xs mx-1">|</span>
             <Input
               type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              value={filters.dateFrom}
+              onChange={(e) => setFilter("dateFrom", e.target.value)}
               className="w-34 h-8 text-xs"
             />
             <span className="text-muted-foreground text-xs">〜</span>
             <Input
               type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              value={filters.dateTo}
+              onChange={(e) => setFilter("dateTo", e.target.value)}
               className="w-34 h-8 text-xs"
             />
           </div>

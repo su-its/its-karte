@@ -132,8 +132,7 @@ export function AffiliationFields({
         ))}
       </AffiliationStepRow>
 
-      {steps.map((step) => {
-        const stepIdx = steps.indexOf(step);
+      {steps.map((step, stepIdx) => {
         if (stepIdx > 0 && !selections[steps[stepIdx - 1].field]) return null;
 
         return (
