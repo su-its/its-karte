@@ -5,9 +5,10 @@ import {
   karteId,
   memberId,
   workDuration,
+  nonEmptyString,
   StudentId,
   CONSULTATION_CATEGORIES,
-  type Affiliation,
+  type CompleteAffiliation,
   type MemberId,
   type ConsultedAt,
   type ConsultationCategory,
@@ -59,7 +60,7 @@ function buildConsultedAt(input: KarteFormInput): ConsultedAt {
   }
 }
 
-function buildAffiliation(input: KarteFormInput): Affiliation {
+function buildAffiliation(input: KarteFormInput): CompleteAffiliation {
   const omitEmpty = (obj: Record<string, unknown>) =>
     Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== "" && v !== undefined));
 
@@ -82,7 +83,7 @@ function buildAffiliation(input: KarteFormInput): Affiliation {
           year: input.year,
         });
 
-  return { type: input.courseType, value } as unknown as Affiliation;
+  return { type: input.courseType, value } as unknown as CompleteAffiliation;
 }
 
 function buildCategories(ids: string[]): [ConsultationCategory, ...ConsultationCategory[]] {
@@ -119,27 +120,26 @@ export async function createKarte(input: KarteFormInput) {
           ? { type: "staff" as const, name }
           : { type: "other" as const, name };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- core v3 型変更への暫定対応
   await karteUseCases.createKarte.execute({
     id,
     consultedAt: buildConsultedAt(input),
-    client: client as any,
+    client,
     consent: {
       liabilityConsent: input.liabilityConsent,
       disclosureConsent: input.disclosureConsent,
     },
     consultation: {
       categories,
-      targetDevice: input.targetDevice as any,
-      troubleDetails: input.troubleDetails as any,
+      targetDevice: nonEmptyString(input.targetDevice, "targetDevice"),
+      troubleDetails: nonEmptyString(input.troubleDetails, "troubleDetails"),
     },
     supportRecord: {
       assignedMemberIds: memberIds as unknown as [MemberId, ...MemberId[]],
-      content: input.supportContent as any,
+      content: nonEmptyString(input.supportContent, "supportContent"),
       resolution,
       workDuration: workDuration(input.workDurationMinutes),
     },
-  } as any);
+  });
 
   return { id: id as string };
 }
