@@ -205,33 +205,41 @@ test.describe("S2-S3: 所属ステップ遷移", () => {
     await expect(page.getByRole("button", { name: "4年" })).toBeVisible();
   });
 
-  // BUG: 修士・博士ではgetAffiliationStepsがfield="school"を期待するが、
-  // AFFILIATION_FIELDSに"school"が含まれないため、研究科選択後に
-  // 次のステップ(専攻)が表示されない。
-  // リファクタリング時に修正すべき既知の問題。
-  test.fixme("修士課程: 研究科選択後に専攻ステップが表示される", async ({ page }) => {
+  test("修士課程: 研究科 → 専攻 → コース → 学年", async ({ page }) => {
     await page.getByRole("button", { name: "修士課程" }).click();
-    await page.getByRole("button", { name: "総合科学技術研究科" }).click();
-    await expect(page.getByRole("button", { name: "情報学専攻" })).toBeVisible();
-  });
 
-  test.fixme("博士課程: 研究科選択後に専攻ステップが表示される", async ({ page }) => {
-    await page.getByRole("button", { name: "博士課程" }).click();
-    await page.getByRole("button", { name: "創造科学技術大学院" }).click();
-    await expect(page.getByRole("button", { name: "情報科学専攻" })).toBeVisible();
-  });
-
-  test("修士課程: 研究科ステップが表示される", async ({ page }) => {
-    await page.getByRole("button", { name: "修士課程" }).click();
+    // 研究科ステップ
     for (const name of ["人文社会科学研究科", "総合科学技術研究科", "山岳流域研究院"]) {
       await expect(page.getByRole("button", { name })).toBeVisible();
     }
+    await page.getByRole("button", { name: "総合科学技術研究科" }).click();
+
+    // 専攻ステップ
+    await expect(page.getByRole("button", { name: "情報学専攻" })).toBeVisible();
+    await page.getByRole("button", { name: "情報学専攻" }).click();
+
+    // コースステップ
+    await expect(page.getByRole("button", { name: "基盤情報学コース" })).toBeVisible();
+    await page.getByRole("button", { name: "基盤情報学コース" }).click();
+
+    // 学年（修士は最大2年）
+    await expect(page.getByRole("button", { name: "1年" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "2年" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "3年" })).toBeHidden();
   });
 
-  test("博士課程: 研究科ステップが表示される", async ({ page }) => {
+  test("博士課程: 研究科 → 専攻 → 学年", async ({ page }) => {
     await page.getByRole("button", { name: "博士課程" }).click();
+
     await expect(page.getByRole("button", { name: "創造科学技術大学院" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "教育学研究科" })).toBeVisible();
+    await page.getByRole("button", { name: "創造科学技術大学院" }).click();
+
+    await expect(page.getByRole("button", { name: "情報科学専攻" })).toBeVisible();
+    await page.getByRole("button", { name: "情報科学専攻" }).click();
+
+    // 学年（博士は最大3年）
+    await expect(page.getByRole("button", { name: "1年" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "3年" })).toBeVisible();
   });
 
   test("専門職学位課程: auto-skipで研究科が自動選択される", async ({ page }) => {

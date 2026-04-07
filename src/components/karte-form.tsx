@@ -885,10 +885,15 @@ function AffiliationFields({
   const editable = canEdit("courseType");
 
   // 現在の選択状態からステップを計算
+  // getAffiliationSteps は修士・博士・専門職で field: "school" を使うが、
+  // KarteFormValues では "faculty" に統一しているため、マッピングが必要
   const selections: Record<string, string> = {};
   for (const f of AFFILIATION_FIELDS) {
     const v = values[f];
     if (typeof v === "string" && v) selections[f] = v;
+  }
+  if (values.courseType !== "undergraduate" && values.faculty) {
+    selections.school = values.faculty;
   }
   const steps = values.courseType ? getAffiliationSteps(values.courseType, selections) : [];
 
@@ -922,19 +927,24 @@ function AffiliationFields({
     );
   }
 
-  function selectCourseType(ct: string) {
-    set("courseType", ct as never);
+  function selectCourseType(ct: KarteFormValues["courseType"]) {
+    set("courseType", ct);
     clearAffiliationFields(set);
     // 最初のステップにauto-skip適用
     autoSkip(ct, {});
   }
 
+  /** ステップのfieldをフォームのキーに変換（school → faculty） */
+  function toFormKey(field: string): keyof KarteFormValues {
+    return (field === "school" ? "faculty" : field) as keyof KarteFormValues;
+  }
+
   function selectStep(step: AffiliationStep, value: string) {
-    set(step.field as keyof KarteFormValues, value as never);
+    set(toFormKey(step.field), value as never);
     // このステップ以降をクリア
     const stepIdx = steps.findIndex((s) => s.field === step.field);
     for (const s of steps.slice(stepIdx + 1)) {
-      set(s.field as keyof KarteFormValues, "" as never);
+      set(toFormKey(s.field), "" as never);
     }
     set("year", "" as never);
     // 次のステップにauto-skip適用
@@ -942,13 +952,13 @@ function AffiliationFields({
     autoSkip(values.courseType, newSelections);
   }
 
-  function autoSkip(ct: string, sels: Record<string, string>) {
+  function autoSkip(ct: KarteFormValues["courseType"], sels: Record<string, string>) {
     let s = { ...sels };
     for (;;) {
       const currentSteps = getAffiliationSteps(ct, s);
       const nextStep = currentSteps.find((step) => !s[step.field]);
       if (!nextStep || nextStep.options.length !== 1) break;
-      set(nextStep.field as keyof KarteFormValues, nextStep.options[0] as never);
+      set(toFormKey(nextStep.field), nextStep.options[0] as never);
       s[nextStep.field] = nextStep.options[0];
     }
   }
@@ -979,7 +989,7 @@ function AffiliationFields({
             type="button"
             size="sm"
             variant={values.courseType === ct.value ? "default" : "outline"}
-            onClick={() => selectCourseType(ct.value)}
+            onClick={() => selectCourseType(ct.value as KarteFormValues["courseType"])}
           >
             {ct.label}
           </Button>
