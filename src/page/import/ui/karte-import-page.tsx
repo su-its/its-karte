@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { parseCsv, type CsvRow } from "../model/parse-csv";
 import { parseCategoryTags } from "../model/tag-mapping";
@@ -8,25 +8,14 @@ import { listMembers, listKartesWithMembers, listCategories } from "@/shared/api
 import { importKartes, type ImportResult } from "../api/import.server";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Badge } from "@/shared/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/shared/ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/shared/ui/sheet";
-import { cn } from "@/shared/lib";
-import { KarteTable } from "@/widgets/karte-table";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 import { DuplicateComparison } from "./duplicate-comparison";
-import {
-  CheckCircle2Icon,
-  AlertCircleIcon,
-  UploadIcon,
-  LoaderIcon,
-  ArrowRightIcon,
-  ArrowLeftIcon,
-} from "lucide-react";
+import { CheckCircle2Icon, AlertCircleIcon, LoaderIcon, ArrowLeftIcon } from "lucide-react";
 import { Stepper } from "./stepper";
 import { DropZone } from "@/shared/ui/drop-zone";
-import { AssigneeMapper } from "./assignee-mapper";
-import { DupCell } from "./dup-cell";
+import { ValidationStep } from "./validation-step";
+import { DuplicateStep } from "./duplicate-step";
 import { KarteForm, type KarteFormValues } from "@/widgets/karte-form";
 import type { CategoryOption, MemberOption } from "@/shared/api";
 import {
@@ -356,234 +345,37 @@ export function KarteImportPage() {
 
       {/* Validation */}
       {step === "validation" && (
-        <div className="flex flex-col gap-4">
-          {/* Status banner + action */}
-          {errorIndices.size > 0 ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <AlertCircleIcon className="size-5 text-destructive shrink-0" />
-                <div>
-                  <p className="font-semibold">{errorIndices.size}件のデータにエラーがあります</p>
-                  <p className="text-sm text-muted-foreground">
-                    赤くハイライトされた行をクリックして修正してください。すべて解決すると次に進めます。
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2 text-sm">
-                  <Badge variant="secondary">{validCount}件 正常</Badge>
-                  <Badge variant="destructive">{errorIndices.size}件 エラー</Badge>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Button size="lg" onClick={startErrorFlow}>
-                    エラーを修正する（残り{errorIndices.size}件）
-                  </Button>
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-                    onClick={() => {
-                      exportErrorCsv(rows, errorIndices);
-                      proceedFromValidation();
-                    }}
-                  >
-                    エラー行をCSV出力して正常行だけで進む
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CheckCircle2Icon className="size-5 text-green-600 shrink-0" />
-                <div>
-                  <p className="font-semibold">全{validCount}件のデータが正常です</p>
-                  <p className="text-sm text-muted-foreground">
-                    問題なければ次のステップへ進んでください。
-                  </p>
-                </div>
-              </div>
-              <Button size="lg" onClick={proceedFromValidation}>
-                {duplicateMap.size > 0 ? (
-                  <>
-                    重複確認へ進む <ArrowRightIcon data-icon="inline-end" />
-                  </>
-                ) : (
-                  <>
-                    <UploadIcon data-icon="inline-start" /> {validCount}件をインポート
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
-
-          {/* Unresolved assignee mapping */}
-          {errorIndices.size === 0 && unresolvedAssignees.size > 0 && (
-            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
-              <div className="flex items-center gap-3 mb-4">
-                <AlertCircleIcon className="size-5 text-yellow-600 shrink-0" />
-                <div>
-                  <p className="font-semibold">
-                    {unresolvedAssignees.size}名の担当者がメンバーに紐づいていません
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    メンバーを選択して紐づけるか、そのままインポートできます。
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-3">
-                {[...unresolvedAssignees.entries()].map(([name, count]) => (
-                  <AssigneeMapper
-                    key={name}
-                    unresolvedName={name}
-                    count={count}
-                    members={members}
-                    onResolve={(memberId) => resolveAssignee(name, memberId)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Table */}
-          <KarteTable kartes={tableRows} onRowClick={(_, index) => openRowEditor(index)} />
-        </div>
+        <ValidationStep
+          tableRows={tableRows}
+          errorCount={errorIndices.size}
+          validCount={validCount}
+          hasDuplicates={duplicateMap.size > 0}
+          unresolvedAssignees={unresolvedAssignees}
+          members={members}
+          onStartErrorFlow={startErrorFlow}
+          onExportAndProceed={() => {
+            exportErrorCsv(rows, errorIndices);
+            proceedFromValidation();
+          }}
+          onProceed={proceedFromValidation}
+          onRowClick={(_, index) => openRowEditor(index)}
+          onResolveAssignee={resolveAssignee}
+        />
       )}
 
       {/* Duplicate Review */}
       {step === "duplicates" && (
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertCircleIcon className="size-5 text-yellow-600 shrink-0" />
-              <div>
-                <p className="font-semibold">{duplicateMap.size}件の重複候補が見つかりました</p>
-                <p className="text-sm text-muted-foreground">
-                  CSVデータと既存レコードを比較して、インポートするかスキップするか判断してください。
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 text-sm">
-              <Badge variant="secondary">{importableCount}件 インポート</Badge>
-              <Badge variant="outline">{skippedIndices.size}件 スキップ</Badge>
-            </div>
-          </div>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">ソース</TableHead>
-                <TableHead className="whitespace-nowrap">相談日</TableHead>
-                <TableHead className="whitespace-nowrap">相談者</TableHead>
-                <TableHead>トラブル詳細</TableHead>
-                <TableHead>対応内容</TableHead>
-                <TableHead className="whitespace-nowrap">担当者</TableHead>
-                <TableHead className="w-28">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...duplicateMap.entries()].map(([csvIndex, matches]) => {
-                const row = rows[csvIndex];
-                const isSkipped = skippedIndices.has(csvIndex);
-                const topMatchFields = new Set(matches.flatMap((m) => m.matchedFields));
-                const visibleMatches = expandedDuplicates.has(csvIndex)
-                  ? matches
-                  : matches.slice(0, 2);
-                const hasMore = matches.length > 2 && !expandedDuplicates.has(csvIndex);
-
-                return (
-                  <React.Fragment key={csvIndex}>
-                    {/* CSV row */}
-                    <TableRow
-                      className={cn("border-b-0", isSkipped ? "opacity-50" : "bg-background")}
-                    >
-                      <TableCell className="text-xs font-semibold">CSV 行{csvIndex + 2}</TableCell>
-                      <DupCell value={row.date} highlight={topMatchFields.has("nameDate")} />
-                      <DupCell value={row.name} highlight={topMatchFields.has("nameDate")} />
-                      <DupCell
-                        value={row.troubleDetails}
-                        highlight={topMatchFields.has("trouble")}
-                        truncate
-                      />
-                      <DupCell
-                        value={row.supportContent}
-                        highlight={topMatchFields.has("support")}
-                        truncate
-                      />
-                      <TableCell className="text-sm">{row.assignee}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant={isSkipped ? "outline" : "secondary"}
-                          size="sm"
-                          onClick={() => toggleSkip(csvIndex)}
-                        >
-                          {isSkipped ? "インポート" : "スキップ"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    {/* DB matches */}
-                    {visibleMatches.map((match) => {
-                      const k = match.existingKarte;
-                      const mf = new Set(match.matchedFields);
-                      const clientName = k.client.type === "recorded" ? k.client.value.name : "";
-                      const date =
-                        k.consultedAt.type === "recorded" ? k.consultedAt.value.value : "";
-                      const troubleDetails =
-                        k.consultation.troubleDetails.type === "recorded"
-                          ? k.consultation.troubleDetails.value
-                          : "";
-                      const content =
-                        k.supportRecord.content.type === "recorded"
-                          ? k.supportRecord.content.value
-                          : "";
-                      return (
-                        <TableRow key={k.id} className="bg-muted/30 border-b-0">
-                          <TableCell className="text-xs text-muted-foreground">既存</TableCell>
-                          <DupCell value={date} highlight={mf.has("nameDate")} />
-                          <DupCell value={clientName} highlight={mf.has("nameDate")} />
-                          <DupCell value={troubleDetails} highlight={mf.has("trouble")} truncate />
-                          <DupCell value={content} highlight={mf.has("support")} truncate />
-                          <TableCell className="text-sm">
-                            {k.assignedMemberNames.join(", ")}
-                          </TableCell>
-                          <TableCell />
-                        </TableRow>
-                      );
-                    })}
-                    {hasMore && (
-                      <TableRow className="bg-muted/30">
-                        <TableCell colSpan={7} className="text-center">
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground underline hover:text-foreground"
-                            onClick={() =>
-                              setExpandedDuplicates((prev) => new Set(prev).add(csvIndex))
-                            }
-                          >
-                            他{matches.length - 2}件の候補を表示
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {/* Spacer */}
-                    <TableRow className="h-2 border-b">
-                      <TableCell colSpan={7} className="p-0" />
-                    </TableRow>
-                  </React.Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
-
-          {/* Bottom action bar */}
-          <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-4">
-            <Button variant="outline" onClick={() => setStep("validation")}>
-              <ArrowLeftIcon data-icon="inline-start" /> データ検証に戻る
-            </Button>
-            <Button size="lg" onClick={() => handleImport()}>
-              <UploadIcon data-icon="inline-start" /> {importableCount}件をインポート
-            </Button>
-          </div>
-        </div>
+        <DuplicateStep
+          rows={rows}
+          duplicateMap={duplicateMap}
+          skippedIndices={skippedIndices}
+          expandedDuplicates={expandedDuplicates}
+          importableCount={importableCount}
+          onToggleSkip={toggleSkip}
+          onExpandDuplicates={(idx) => setExpandedDuplicates((prev) => new Set(prev).add(idx))}
+          onBack={() => setStep("validation")}
+          onImport={() => handleImport()}
+        />
       )}
 
       {/* Importing */}
