@@ -1,8 +1,8 @@
-import { listKartesWithMembers, listMembers } from "@/actions/karte";
+import { listKartesWithMembers, listMembers } from "@/shared/api";
 import { CONSULTATION_CATEGORIES } from "@shizuoka-its/core";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { KarteListWithDetail } from "@/components/karte-list-with-detail";
+import { Button } from "@/shared/ui/button";
+import { KarteListWithDetail } from "@/page/list";
 import { FileSpreadsheetIcon, PlusIcon } from "lucide-react";
 
 export default async function KartesPage() {

@@ -2,34 +2,21 @@
 
 import { useState, useMemo, useRef } from "react";
 import Link from "next/link";
-import { parseCsv, type CsvRow } from "@/lib/parseCsv";
-import { parseCategoryTags } from "@/lib/tagMapping";
-import { listMembers, listKartesWithMembers, listCategories } from "@/actions/karte";
-import { importKartes, type ImportResult } from "@/actions/import";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
-import { KarteTable } from "@/components/karte-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { DuplicateComparison } from "@/components/duplicate-comparison";
+import { parseCsv, type CsvRow } from "@/page/import/model/parse-csv";
+import { parseCategoryTags } from "@/page/import/model/tag-mapping";
+import { listMembers, listKartesWithMembers, listCategories } from "@/shared/api";
+import { importKartes, type ImportResult } from "@/shared/api";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Badge } from "@/shared/ui/badge";
+import { Input } from "@/shared/ui/input";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/shared/ui/hover-card";
+import { Alert, AlertTitle, AlertDescription } from "@/shared/ui/alert";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/shared/ui/sheet";
+import { cn } from "@/shared/lib";
+import { KarteTable } from "@/widgets/karte-table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import { DuplicateComparison } from "@/page/import/ui/duplicate-comparison";
 import {
   CheckCircle2Icon,
   AlertCircleIcon,
@@ -38,13 +25,9 @@ import {
   ArrowRightIcon,
   ArrowLeftIcon,
 } from "lucide-react";
-import { Stepper } from "@/components/stepper";
-import {
-  KarteForm,
-  type KarteFormValues,
-  type CategoryOption,
-  type MemberOption,
-} from "@/components/karte-form";
+import { Stepper } from "@/page/import/ui/stepper";
+import { KarteForm, type KarteFormValues } from "@/widgets/karte-form";
+import type { CategoryOption, MemberOption } from "@/shared/api";
 import {
   type MemberInfo,
   type ExistingKarte,
@@ -60,7 +43,7 @@ import {
   exportErrorCsv,
   getErrorFields,
   validateRow,
-} from "./helpers";
+} from "@/page/import/model/helpers";
 
 type Step = "upload" | "validation" | "duplicates" | "importing" | "done";
 

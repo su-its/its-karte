@@ -1,6 +1,6 @@
-import { listMembers, createKarte } from "@/actions/karte";
+import { listMembers, createKarte } from "@/shared/api";
 import { CONSULTATION_CATEGORIES } from "@shizuoka-its/core";
-import { NewKarteClient } from "./client";
+import { NewKarteClient } from "@/page/new";
 
 export default async function NewKartePage() {
   const members = await listMembers();
