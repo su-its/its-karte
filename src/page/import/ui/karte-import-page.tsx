@@ -24,7 +24,7 @@ import {
   ArrowLeftIcon,
 } from "lucide-react";
 import { Stepper } from "./stepper";
-import { DropZone } from "./drop-zone";
+import { DropZone } from "@/shared/ui/drop-zone";
 import { AssigneeMapper } from "./assignee-mapper";
 import { DupCell } from "./dup-cell";
 import { KarteForm, type KarteFormValues } from "@/widgets/karte-form";

@@ -27,7 +27,7 @@ import {
 } from "../model/karte-form-values";
 
 import { ConsultedAtInput } from "./consulted-at-input";
-import { SearchableMultiSelect } from "./searchable-multi-select";
+import { SearchableMultiSelect } from "@/shared/ui/searchable-multi-select";
 import { AffiliationFields } from "./affiliation-fields";
 
 export type { KarteFormValues } from "../model/karte-form-values";
