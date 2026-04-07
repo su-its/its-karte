@@ -1,2 +1,1 @@
-export { DuplicateComparison } from "./ui/duplicate-comparison";
-export { Stepper } from "./ui/stepper";
+export { KarteImportPage } from "./ui/karte-import-page";

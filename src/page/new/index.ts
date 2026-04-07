@@ -1,1 +1,1 @@
-export { NewKarteClient } from "./ui/karte-new-client";
+export { KarteNewPage } from "./ui/karte-new-page";
