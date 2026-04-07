@@ -15,109 +15,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/shared/ui/hover-card";
 import { CheckIcon, XIcon, ColumnsIcon, SearchIcon } from "lucide-react";
 import { cn } from "@/shared/lib";
-import type { ConsultedAtPrecision, MemberOption } from "@/shared/api";
+import type { MemberOption } from "@/shared/api";
 import { formatConsultedAtDisplay } from "@/shared/lib";
 
-type Recorded<T> = { type: "recorded"; value: T } | { type: "notRecorded" };
+import {
+  type KarteTableRow,
+  type ColumnKey,
+  COLUMNS,
+  getDatePresets,
+  filterKartes,
+} from "../model/karte-table-columns";
 
-export type SerializedConsultedAt = {
-  precision: ConsultedAtPrecision;
-  value: string;
-};
-
-/** SerializedConsultedAtからYYYY-MM-DD形式の文字列を取得（フィルター用） */
-function consultedAtToDateString(ca: SerializedConsultedAt): string {
-  switch (ca.precision) {
-    case "year":
-      return `${ca.value}-01-01`;
-    case "yearMonth":
-      return `${ca.value}-01`;
-    case "date":
-    case "datetime":
-      return ca.value.slice(0, 10);
-  }
-}
-
-export type KarteTableRow = {
-  id: string;
-  recordedAt: string;
-  consultedAt: Recorded<SerializedConsultedAt>;
-  client: Recorded<{
-    type: string;
-    name: string;
-    studentId?: string;
-    affiliation?: string;
-    affiliationData?: {
-      courseType: "undergraduate" | "master" | "doctoral" | "professional";
-      faculty: string;
-      department: string;
-      year: number | null;
-    };
-  }>;
-  consent: {
-    liabilityConsent: boolean;
-    disclosureConsent: boolean;
-  };
-  consultation: {
-    targetDevice: Recorded<string>;
-    categories: Recorded<readonly { id: string; displayName: string }[]>;
-    troubleDetails: Recorded<string>;
-  };
-  assignedMemberNames: string[];
-  supportRecord: {
-    content: Recorded<string>;
-    resolution: Recorded<{ type: "resolved" } | { type: "unresolved"; followUp?: string }>;
-    workDuration: Recorded<number>;
-  };
-  /** エラーメッセージ（設定されている行はエラー行として扱う） */
-  error?: string;
-  /** エラーが修正済みであることを示す */
-  fixed?: boolean;
-  /** 警告（非ブロッキング: 未解決担当者など） */
-  warning?: string;
-};
-
-const COLUMNS = [
-  { key: "id", label: "ID", defaultVisible: false },
-  { key: "recordedAt", label: "記録日時", defaultVisible: true },
-  { key: "consultedAt", label: "相談日時", defaultVisible: true },
-  { key: "client", label: "相談者", defaultVisible: true },
-  { key: "consent", label: "同意", defaultVisible: false },
-  { key: "targetDevice", label: "対象端末", defaultVisible: true },
-  { key: "categories", label: "カテゴリ", defaultVisible: true },
-  { key: "troubleDetails", label: "トラブル詳細", defaultVisible: true },
-  { key: "supportContent", label: "対応内容", defaultVisible: true },
-  { key: "assignee", label: "担当者", defaultVisible: true },
-  { key: "resolution", label: "ステータス", defaultVisible: true },
-  { key: "workDuration", label: "作業時間", defaultVisible: false },
-] as const;
-
-type ColumnKey = (typeof COLUMNS)[number]["key"];
-
-function toDateString(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function getDatePresets(): { label: string; from: string; to: string }[] {
-  const now = new Date();
-  const today = toDateString(now);
-
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay());
-
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const fiscalYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-  const fiscalYearStart = new Date(fiscalYear, 3, 1);
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-
-  return [
-    { label: "今日", from: today, to: today },
-    { label: "今週", from: toDateString(weekStart), to: today },
-    { label: "今月", from: toDateString(monthStart), to: today },
-    { label: "今年度", from: toDateString(fiscalYearStart), to: today },
-    { label: "今年", from: toDateString(yearStart), to: today },
-  ];
-}
+export type { KarteTableRow, SerializedConsultedAt } from "../model/karte-table-columns";
 
 const DATE_PRESETS = getDatePresets();
 
@@ -157,11 +66,8 @@ export function KarteTable({
   function toggleColumn(key: ColumnKey) {
     setVisibleColumns((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -172,52 +78,12 @@ export function KarteTable({
   const hasActiveFilters =
     search || statusFilter !== "all" || clientTypeFilter !== "all" || dateFrom || dateTo;
 
-  const filtered = kartes.filter((karte) => {
-    // Status
-    if (statusFilter !== "all") {
-      const res = karte.supportRecord.resolution;
-      if (
-        statusFilter === "resolved" &&
-        !(res.type === "recorded" && res.value.type === "resolved")
-      )
-        return false;
-      if (
-        statusFilter === "unresolved" &&
-        !(res.type === "recorded" && res.value.type === "unresolved")
-      )
-        return false;
-      if (statusFilter === "notRecorded" && res.type !== "notRecorded") return false;
-    }
-    // Client type
-    if (clientTypeFilter !== "all") {
-      const type = karte.client.type === "recorded" ? karte.client.value.type : "";
-      if (type !== clientTypeFilter) return false;
-    }
-    // Date range
-    if (dateFrom || dateTo) {
-      if (karte.consultedAt.type !== "recorded") return false;
-      const date = consultedAtToDateString(karte.consultedAt.value);
-      if (dateFrom && date < dateFrom) return false;
-      if (dateTo && date > dateTo) return false;
-    }
-    // Text search
-    if (search) {
-      const q = search.toLowerCase();
-      const texts = [
-        karte.client.type === "recorded" ? karte.client.value.name : "",
-        karte.client.type === "recorded" ? (karte.client.value.studentId ?? "") : "",
-        karte.consultation.troubleDetails.type === "recorded"
-          ? karte.consultation.troubleDetails.value
-          : "",
-        karte.supportRecord.content.type === "recorded" ? karte.supportRecord.content.value : "",
-        ...karte.assignedMemberNames,
-        karte.consultation.targetDevice.type === "recorded"
-          ? karte.consultation.targetDevice.value
-          : "",
-      ];
-      if (!texts.some((t) => t.toLowerCase().includes(q))) return false;
-    }
-    return true;
+  const filtered = filterKartes(kartes, {
+    search,
+    statusFilter,
+    clientTypeFilter,
+    dateFrom,
+    dateTo,
   });
 
   function clearFilters() {
@@ -241,12 +107,7 @@ export function KarteTable({
               className="pl-9"
             />
           </div>
-          <Select
-            value={statusFilter}
-            onValueChange={(v) => {
-              if (v) setStatusFilter(v);
-            }}
-          >
+          <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
             <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
@@ -257,12 +118,7 @@ export function KarteTable({
               <SelectItem value="notRecorded">未記録</SelectItem>
             </SelectContent>
           </Select>
-          <Select
-            value={clientTypeFilter}
-            onValueChange={(v) => {
-              if (v) setClientTypeFilter(v);
-            }}
-          >
+          <Select value={clientTypeFilter} onValueChange={(v) => v && setClientTypeFilter(v)}>
             <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
