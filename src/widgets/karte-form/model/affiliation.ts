@@ -67,7 +67,7 @@ export function diffSelectionsToFormUpdates(
 }
 
 /** 所属フィールドをすべてクリアした新しい値を返す */
-export function clearAffiliation(values: KarteFormValues): Partial<KarteFormValues> {
+export function clearAffiliation(): Partial<KarteFormValues> {
   const cleared: Partial<KarteFormValues> = {};
   for (const f of AFFILIATION_FIELDS) {
     (cleared as Record<string, string>)[f] = "";

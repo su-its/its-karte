@@ -6,7 +6,6 @@ import { getMaxYear, getAffiliationSteps, type AffiliationStep } from "@shizuoka
 import type { KarteFormValues } from "../model/karte-form-values";
 import { COURSE_TYPES } from "../model/karte-form-values";
 import {
-  AFFILIATION_FIELDS,
   buildSelections,
   computeAutoSkip,
   diffSelectionsToFormUpdates,
@@ -48,7 +47,7 @@ export function AffiliationFields({
         className="rounded-full border border-dashed border-muted-foreground/50 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         onClick={() => {
           set("courseType", "" as never);
-          const cleared = clearAffiliation(values);
+          const cleared = clearAffiliation();
           for (const [k, v] of Object.entries(cleared)) {
             set(k as keyof KarteFormValues, v as never);
           }
@@ -84,7 +83,7 @@ export function AffiliationFields({
 
   function selectCourseType(ct: KarteFormValues["courseType"]) {
     set("courseType", ct);
-    const cleared = clearAffiliation(values);
+    const cleared = clearAffiliation();
     for (const [k, v] of Object.entries(cleared)) {
       set(k as keyof KarteFormValues, v as never);
     }

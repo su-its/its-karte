@@ -15,6 +15,11 @@
 /test-results/
 /playwright-report/
 
+# planning files
+task_plan.md
+findings.md
+progress.md
+
 # next.js
 /.next/
 /out/
